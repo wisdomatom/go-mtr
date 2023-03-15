@@ -1,25 +1,33 @@
 package go_mtr
 
-import "time"
+import (
+	"golang.org/x/sys/unix"
+	"time"
+)
 
 type Config struct {
 	ICMP bool
-	TCP bool
-	UDP bool
+	TCP  bool
+	UDP  bool
 }
 
 type Trace struct {
-	SrcAddr string
-	DstAddr string
-	MaxTTL string
-	Retry int
-
-
+	IsIpv4      bool
+	SrcAddr     string
+	DstAddr     string
+	SrcSockAddr unix.Sockaddr
+	DstSockAddr unix.Sockaddr
+	SrcPort     int
+	DstPort     int
+	MaxTTL      uint8
+	Retry       int
 }
 
 type TraceRes struct {
-	Trace
+	SrcTTL  string
 	Latency time.Duration
-	TTL int
+	TTL     uint8
 	Reached bool
+	//Err     error
+	//Finish  bool
 }
