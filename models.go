@@ -1,8 +1,9 @@
 package go_mtr
 
 import (
-	"golang.org/x/sys/unix"
 	"time"
+
+	"golang.org/x/sys/unix"
 )
 
 type Config struct {
@@ -28,6 +29,4 @@ type TraceRes struct {
 	Latency time.Duration
 	TTL     uint8
 	Reached bool
-	//Err     error
-	//Finish  bool
 }

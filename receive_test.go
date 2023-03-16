@@ -21,7 +21,7 @@ func TestReceive(t *testing.T) {
 		case bts := <-ch:
 			icmp, err := deCon.DeConstruct(bts)
 			if err != nil {
-				panic(err)
+				continue
 			}
 			fmtICMPRcv(icmp)
 		}

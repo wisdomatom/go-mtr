@@ -2,6 +2,7 @@ package go_mtr
 
 import (
 	"context"
+
 	"golang.org/x/sys/unix"
 )
 
@@ -19,9 +20,13 @@ type rcvIpv4 struct {
 func newRcvIpv4() (Receiver, error) {
 	var err error
 	var fd int
-	fd, err = unix.Socket(unix.AF_INET, unix.SOCK_DGRAM, unix.IPPROTO_ICMP)
+	fd, err = unix.Socket(unix.AF_INET, unix.SOCK_RAW, unix.IPPROTO_ICMP)
 	if err != nil {
 
+		return nil, err
+	}
+	err = setSockOptReceiveErr(fd)
+	if err != nil {
 		return nil, err
 	}
 	ctx, cancel := context.WithCancel(context.Background())

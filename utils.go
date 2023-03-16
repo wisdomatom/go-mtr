@@ -2,8 +2,9 @@ package go_mtr
 
 import (
 	"fmt"
-	"golang.org/x/sys/unix"
 	"net"
+
+	"golang.org/x/sys/unix"
 )
 
 func checksum(buf []byte) uint16 {
@@ -72,7 +73,7 @@ func GetTrace(t *Trace) (*Trace, error) {
 	}
 	if IsIpv4(t.DstAddr) {
 		var addr [4]byte
-		copy(addr[:], src.To4())
+		copy(addr[:], dst.To4())
 		sock := unix.SockaddrInet4{
 			Port: t.DstPort,
 			Addr: addr,
@@ -81,7 +82,7 @@ func GetTrace(t *Trace) (*Trace, error) {
 		t.DstSockAddr = &sock
 	} else {
 		var addr [16]byte
-		copy(addr[:], src.To16())
+		copy(addr[:], dst.To16())
 		sock := unix.SockaddrInet6{
 			Port: t.DstPort,
 			Addr: addr,

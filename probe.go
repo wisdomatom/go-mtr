@@ -1,8 +1,9 @@
 package go_mtr
 
 import (
-	"golang.org/x/sys/unix"
 	"time"
+
+	"golang.org/x/sys/unix"
 )
 
 type Detector interface {
@@ -52,6 +53,7 @@ func (p *probeIpv4) Probe(req SendProbe) error {
 func (p *probeIpv4) probe(req SendProbe) error {
 	var fd int
 	var err error
+	_ = unix.AF_INET
 	fd, err = unix.Socket(unix.AF_INET, unix.SOCK_RAW, unix.IPPROTO_RAW)
 	if err != nil {
 		return err

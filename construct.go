@@ -4,9 +4,10 @@ import (
 	"bytes"
 	"encoding/binary"
 	"fmt"
-	"golang.org/x/sys/unix"
 	"net"
 	"runtime"
+
+	"golang.org/x/sys/unix"
 )
 
 type Constructor interface {
@@ -75,8 +76,6 @@ type headerICMPEcho struct {
 	checkSum uint16
 	id       uint16
 	seq      uint16
-	//payload  []byte
-	ts uint16
 }
 
 func (h *headerIpv4) checksum() {
@@ -147,11 +146,10 @@ func (c *constructIpv4) packetICMP(req ConstructPacket) ([]byte, error) {
 		checkSum: 0,
 		id:       req.Id,
 		seq:      req.Seq,
-		ts:       8,
 	}
 	hdICMP.checksum()
 
-	icmpLen := uint16(10)
+	icmpLen := uint16(8)
 	totalLen := 20 + icmpLen
 	hdIp4.length = totalLen
 	hdIp4.checksum()
