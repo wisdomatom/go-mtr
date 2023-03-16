@@ -18,9 +18,7 @@ func TestTrace(t *testing.T) {
 	}
 	tc, err := GetTrace(&Trace{
 		SrcAddr: "10.23.228.78",
-		//SrcAddr: "172.16.57.12",
 		DstAddr: "172.16.57.12",
-		//DstAddr: "120.92.224.232",
 		SrcPort: 65535,
 		DstPort: 65535,
 		MaxTTL:  30,
