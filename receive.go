@@ -2,7 +2,6 @@ package go_mtr
 
 import (
 	"context"
-
 	"golang.org/x/sys/unix"
 )
 
@@ -11,7 +10,24 @@ type Receiver interface {
 	Close()
 }
 
+type rcvMock struct{}
+
+func (r *rcvMock) Receive() chan []byte {
+	return nil
+}
+
+func (r *rcvMock) Close() {}
+
+type rcvIpv6 struct {
+	rcvMock
+}
+
+func newRcvIpv6() (Receiver, error) {
+	return &rcvIpv6{}, nil
+}
+
 type rcvIpv4 struct {
+	rcvMock
 	fd     int
 	ctx    context.Context
 	cancel func()

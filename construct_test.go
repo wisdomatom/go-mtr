@@ -13,9 +13,9 @@ func TestConstructICMP(t *testing.T) {
 		UDP:  true,
 	})
 	tc, err := GetTrace(&Trace{
-		// SrcAddr: "10.23.228.78",
-		SrcAddr: "172.16.57.12",
-		DstAddr: "10.23.228.78",
+		SrcAddr: "10.23.228.78",
+		//SrcAddr: "172.16.57.12",
+		DstAddr: "172.16.57.12",
 		SrcPort: 65535,
 		DstPort: 65535,
 		MaxTTL:  100,
@@ -27,7 +27,7 @@ func TestConstructICMP(t *testing.T) {
 	}
 	detector := newProbeIpv4()
 	for i := 0; i < 30; i++ {
-		tc.MaxTTL = 63
+		tc.MaxTTL = uint8(i + 1)
 		bts, err := ct.Packet(ConstructPacket{
 			Trace:   *tc,
 			Id:      uint16(i + 1),

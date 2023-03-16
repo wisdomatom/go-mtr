@@ -2,11 +2,15 @@ package go_mtr
 
 import (
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 )
 
 type Tracer interface {
+	Listen()
+	Close()
+	BatchTrace(batch []Trace, startTTL uint8) []TraceResult
 }
 
 type tracer struct {
@@ -37,11 +41,68 @@ type TraceResult struct {
 	Res     []TraceRes
 }
 
-func NewTrace() Tracer {
+func (t TraceResult) Marshal() string {
+	var line []string
+	for _, r := range t.Res {
+		line = append(line, fmt.Sprintf("ttl:%v hop:%v src:%v dst:%v latency:%v reached:%v",
+			r.TTL,
+			r.SrcTTL,
+			t.SrcAddr,
+			t.DstAddr,
+			r.Latency,
+			r.Reached,
+		))
+	}
+	return strings.Join(line, "\n")
+}
+
+func NewTrace(conf Config) (Tracer, error) {
+	ipv4, err := tracerI4(conf)
+	if err != nil {
+		return nil, err
+	}
+	ipv6, err := tracerI6(conf)
+	if err != nil {
+		return nil, err
+	}
 	tc := &tracer{
+		ipv4:          ipv4,
+		ipv6:          ipv6,
 		traceResChMap: &sync.Map{},
 	}
-	return tc
+	return tc, nil
+}
+
+func tracerI4(conf Config) (*tracerIpv4, error) {
+	con := newConstructIpv4(conf)
+	deCon := newDeconstructIpv4()
+	detector := newProbeIpv4()
+	rcv, err := newRcvIpv4()
+	if err != nil {
+		return nil, err
+	}
+	return &tracerIpv4{
+		constructor:   con,
+		deConstructor: deCon,
+		detector:      detector,
+		receiver:      rcv,
+	}, nil
+}
+
+func tracerI6(conf Config) (*tracerIpv6, error) {
+	con := newConstructIpv6(conf)
+	deCon := newDeconstructIpv6()
+	detector := newProbeIpv6()
+	rcv, err := newRcvIpv6()
+	if err != nil {
+		return nil, err
+	}
+	return &tracerIpv6{
+		constructor:   con,
+		deConstructor: deCon,
+		detector:      detector,
+		receiver:      rcv,
+	}, nil
 }
 
 func (t *tracer) handleRcv(rcv *ICMPRcv) {
@@ -84,7 +145,7 @@ func (t *tracer) Close() {
 	t.ipv6.receiver.Close()
 }
 
-func (t *tracer) BatchTrace(batch []Trace) []TraceResult {
+func (t *tracer) BatchTrace(batch []Trace, startTTL uint8) []TraceResult {
 	var result []TraceResult
 	ch := make(chan *TraceResult, len(batch))
 	for idx, b := range batch {
@@ -95,7 +156,7 @@ func (t *tracer) BatchTrace(batch []Trace) []TraceResult {
 			Done:    false,
 			Res:     []TraceRes{},
 		}
-		go t.trace(&tr, ch)
+		go t.trace(startTTL, &tr, ch)
 	}
 	for {
 		select {
@@ -108,42 +169,67 @@ func (t *tracer) BatchTrace(batch []Trace) []TraceResult {
 	}
 }
 
-func (t *tracer) trace(tc *TraceResult, resCh chan *TraceResult) {
+func (t *tracer) trace(startTTL uint8, tc *TraceResult, resCh chan *TraceResult) {
+	var err error
 	ch := make(chan *ICMPRcv)
 	t.traceResChMap.Store(tc.id, ch)
+	defer t.traceResChMap.Delete(tc.id)
 	maxUnReply := 3
 	unReply := 0
-	for ttl := uint8(1); ttl <= tc.MaxTTL+4; ttl++ {
+	maxTTl := tc.MaxTTL
+	for ttl := startTTL; ttl <= maxTTl+4; ttl++ {
+		var pkg []byte
 		start := time.Now()
+		tc.MaxTTL = ttl
 		if tc.IsIpv4 {
-			err := t.ipv4.detector.Probe(SendProbe{
+			pkg, err = t.ipv4.constructor.Packet(ConstructPacket{
+				Trace:   tc.Trace,
+				Id:      uint16(ttl),
+				Seq:     uint16(ttl),
+				SrcPort: 65535,
+				DstPort: 65535,
+			})
+			if err != nil {
+				continue
+			}
+			err = t.ipv4.detector.Probe(SendProbe{
 				Trace:        tc.Trace,
 				WriteTimeout: time.Duration(1) * time.Second,
+				Msg:          pkg,
 			})
 			if err != nil {
 				continue
 			}
 		} else {
+			pkg, err = t.ipv6.constructor.Packet(ConstructPacket{
+				Trace:   tc.Trace,
+				Id:      uint16(ttl),
+				Seq:     uint16(ttl),
+				SrcPort: 65535,
+				DstPort: 65535,
+			})
+			if err != nil {
+				continue
+			}
 			err := t.ipv6.detector.Probe(SendProbe{
 				Trace:        tc.Trace,
 				WriteTimeout: time.Duration(1) * time.Second,
+				Msg:          pkg,
 			})
 			if err != nil {
 				continue
 			}
 		}
-		to := time.NewTimer(time.Millisecond * 700)
+		to := time.NewTimer(time.Millisecond * 100)
 	For:
 		for {
 			select {
 			case <-to.C:
 				unReply++
-				tc.Res = append(tc.Res, TraceRes{
-					SrcTTL:  "",
-					Latency: 0,
-					TTL:     ttl,
-					Reached: false,
-				})
+				if unReply >= maxUnReply {
+					resCh <- tc
+					return
+				}
 				break For
 			case rcv := <-ch:
 				unReply = 0
@@ -155,17 +241,19 @@ func (t *tracer) trace(tc *TraceResult, resCh chan *TraceResult) {
 				}
 				if rcv.RcvType == ICMPEcho || rcv.RcvType == ICMPUnreachable {
 					r.Reached = true
+					tc.Done = true
+					tc.Res = append(tc.Res, r)
+					resCh <- tc
+					return
 				}
-				tc.Res = append(tc.Res, r)
 				if r.Reached {
 					tc.Done = true
+					tc.Res = append(tc.Res, r)
 					resCh <- tc
 					return
 				}
-				if unReply >= maxUnReply {
-					resCh <- tc
-					return
-				}
+				tc.Res = append(tc.Res, r)
+				break For
 			}
 		}
 	}
