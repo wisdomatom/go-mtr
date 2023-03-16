@@ -92,7 +92,6 @@ func (dc *deConstructIpv4) rcvTtlICMP(rcv *ICMPRcv, bts []byte) {
 	rcv.TTLSrc = fmt.Sprintf("%v.%v.%v.%v", bts[12], bts[13], bts[14], bts[15])
 	rcv.Src = fmt.Sprintf("%v.%v.%v.%v", bts[offset+20], bts[offset+21], bts[offset+22], bts[offset+23])
 	rcv.Dst = fmt.Sprintf("%v.%v.%v.%v", bts[offset+24], bts[offset+25], bts[offset+26], bts[offset+27])
-	return
 }
 
 func (dc *deConstructIpv4) rcvReplyICMP(rcv *ICMPRcv, bts []byte) {
@@ -103,8 +102,8 @@ func (dc *deConstructIpv4) rcvReplyICMP(rcv *ICMPRcv, bts []byte) {
 	rcv.TTL = bts[offset+8]
 	rcv.Dst = fmt.Sprintf("%v.%v.%v.%v", bts[12], bts[13], bts[14], bts[15])
 	rcv.Src = fmt.Sprintf("%v.%v.%v.%v", bts[16], bts[17], bts[18], bts[19])
+	rcv.TTLSrc = fmt.Sprintf("%v.%v.%v.%v", bts[16], bts[17], bts[18], bts[19])
 	rcv.Reachable = true
-	return
 }
 
 func (dc *deConstructIpv4) rcvUnreachableICMP(rcv *ICMPRcv, bts []byte) {
@@ -113,6 +112,6 @@ func (dc *deConstructIpv4) rcvUnreachableICMP(rcv *ICMPRcv, bts []byte) {
 	rcv.TTL = bts[offset+8+8]
 	rcv.Dst = fmt.Sprintf("%v.%v.%v.%v", bts[12], bts[13], bts[14], bts[15])
 	rcv.Src = fmt.Sprintf("%v.%v.%v.%v", bts[16], bts[17], bts[18], bts[19])
+	rcv.TTLSrc = fmt.Sprintf("%v.%v.%v.%v", bts[16], bts[17], bts[18], bts[19])
 	rcv.Reachable = true
-	return
 }
