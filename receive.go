@@ -60,6 +60,7 @@ func (r *rcvIpv4) Receive() chan []byte {
 		for {
 			select {
 			case <-r.ctx.Done():
+				unix.Close(r.fd)
 				return
 			default:
 			}
