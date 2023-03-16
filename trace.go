@@ -46,16 +46,20 @@ type TraceResult struct {
 func (t TraceResult) Marshal() string {
 	var line []string
 	for _, r := range t.Res {
-		line = append(line, fmt.Sprintf("ttl:%v hop:%v src:%v dst:%v latency:%v reached:%v",
+		line = append(line, fmt.Sprintf("ttl:%-4d hop:%-16s src:%-16s dst:%-16s  latency:%-14v reached:%-6v",
 			r.TTL,
 			r.SrcTTL,
 			t.SrcAddr,
 			t.DstAddr,
-			r.Latency,
+			r.Latency.String(),
 			r.Reached,
 		))
 	}
-	line = append(line, fmt.Sprintf("trace successed: %v", t.Done))
+	if t.Done {
+		line = append(line, fmt.Sprintf("trace successed!"))
+	} else {
+		line = append(line, fmt.Sprintf("trace failed!"))
+	}
 	return strings.Join(line, "\n")
 }
 
