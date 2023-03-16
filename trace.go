@@ -14,6 +14,8 @@ type Tracer interface {
 }
 
 type tracer struct {
+	maxUnReply    int
+	nextHopWait   time.Duration
 	ipv4          *tracerIpv4
 	ipv6          *tracerIpv6
 	traceResChMap *sync.Map
@@ -66,6 +68,8 @@ func NewTrace(conf Config) (Tracer, error) {
 		return nil, err
 	}
 	tc := &tracer{
+		nextHopWait:   conf.NextHopWait,
+		maxUnReply:    conf.MaxUnReply,
 		ipv4:          ipv4,
 		ipv6:          ipv6,
 		traceResChMap: &sync.Map{},
@@ -174,7 +178,6 @@ func (t *tracer) trace(startTTL uint8, tc *TraceResult, resCh chan *TraceResult)
 	ch := make(chan *ICMPRcv)
 	t.traceResChMap.Store(tc.id, ch)
 	defer t.traceResChMap.Delete(tc.id)
-	maxUnReply := 3
 	unReply := 0
 	maxTTl := tc.MaxTTL
 	for ttl := startTTL; ttl <= maxTTl+4; ttl++ {
@@ -186,8 +189,8 @@ func (t *tracer) trace(startTTL uint8, tc *TraceResult, resCh chan *TraceResult)
 				Trace:   tc.Trace,
 				Id:      uint16(ttl),
 				Seq:     uint16(ttl),
-				SrcPort: 65535,
-				DstPort: 65535,
+				SrcPort: tc.SrcPort,
+				DstPort: tc.DstPort,
 			})
 			if err != nil {
 				continue
@@ -205,8 +208,8 @@ func (t *tracer) trace(startTTL uint8, tc *TraceResult, resCh chan *TraceResult)
 				Trace:   tc.Trace,
 				Id:      uint16(ttl),
 				Seq:     uint16(ttl),
-				SrcPort: 65535,
-				DstPort: 65535,
+				SrcPort: tc.SrcPort,
+				DstPort: tc.DstPort,
 			})
 			if err != nil {
 				continue
@@ -220,13 +223,13 @@ func (t *tracer) trace(startTTL uint8, tc *TraceResult, resCh chan *TraceResult)
 				continue
 			}
 		}
-		to := time.NewTimer(time.Millisecond * 100)
+		to := time.NewTimer(t.nextHopWait)
 	For:
 		for {
 			select {
 			case <-to.C:
 				unReply++
-				if unReply >= maxUnReply {
+				if unReply >= t.maxUnReply {
 					resCh <- tc
 					return
 				}

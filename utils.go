@@ -57,7 +57,7 @@ func GetTrace(t *Trace) (*Trace, error) {
 		var addr [4]byte
 		copy(addr[:], src.To4())
 		sock := unix.SockaddrInet4{
-			Port: t.SrcPort,
+			Port: int(t.SrcPort),
 			Addr: addr,
 		}
 		t.SrcSockAddr = &sock
@@ -65,7 +65,7 @@ func GetTrace(t *Trace) (*Trace, error) {
 		var addr [16]byte
 		copy(addr[:], src.To16())
 		sock := unix.SockaddrInet6{
-			Port:   t.SrcPort,
+			Port:   int(t.SrcPort),
 			ZoneId: 0,
 			Addr:   addr,
 		}
@@ -75,7 +75,7 @@ func GetTrace(t *Trace) (*Trace, error) {
 		var addr [4]byte
 		copy(addr[:], dst.To4())
 		sock := unix.SockaddrInet4{
-			Port: t.DstPort,
+			Port: int(t.DstPort),
 			Addr: addr,
 		}
 		t.IsIpv4 = true
@@ -84,7 +84,7 @@ func GetTrace(t *Trace) (*Trace, error) {
 		var addr [16]byte
 		copy(addr[:], dst.To16())
 		sock := unix.SockaddrInet6{
-			Port: t.DstPort,
+			Port: int(t.DstPort),
 			Addr: addr,
 		}
 		t.DstSockAddr = &sock

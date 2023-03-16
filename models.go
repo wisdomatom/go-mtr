@@ -7,9 +7,11 @@ import (
 )
 
 type Config struct {
-	ICMP bool
-	TCP  bool
-	UDP  bool
+	ICMP        bool
+	TCP         bool
+	UDP         bool
+	MaxUnReply  int
+	NextHopWait time.Duration
 }
 
 type Trace struct {
@@ -18,8 +20,8 @@ type Trace struct {
 	DstAddr     string
 	SrcSockAddr unix.Sockaddr
 	DstSockAddr unix.Sockaddr
-	SrcPort     int
-	DstPort     int
+	SrcPort     uint16
+	DstPort     uint16
 	MaxTTL      uint8
 	Retry       int
 }
