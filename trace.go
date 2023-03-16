@@ -55,6 +55,7 @@ func (t TraceResult) Marshal() string {
 			r.Reached,
 		))
 	}
+	line = append(line, fmt.Sprintf("trace successed: %v", t.Done))
 	return strings.Join(line, "\n")
 }
 
