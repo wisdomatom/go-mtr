@@ -274,7 +274,9 @@ func (t *tracer) trace(startTTL uint8, tc *TraceResult, resCh chan *TraceResult)
 			}
 		}
 	}
-	tc.AvgPktLoss = float32(loss) / float32(total)
+	if total > 0 {
+		tc.AvgPktLoss = float32(loss) / float32(total)
+	}
 	resCh <- tc
 	return
 }
