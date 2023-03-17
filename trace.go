@@ -38,9 +38,10 @@ type tracerIpv6 struct {
 type TraceResult struct {
 	id string
 	Trace
-	StartAt time.Time
-	Done    bool
-	Res     []TraceRes
+	StartAt    time.Time
+	Done       bool
+	AvgPktLoss float32
+	Res        []TraceRes
 }
 
 func (t TraceResult) Marshal() string {
@@ -55,6 +56,7 @@ func (t TraceResult) Marshal() string {
 			r.Reached,
 		))
 	}
+	line = append(line, fmt.Sprintf("pkg_loss:%6v", t.AvgPktLoss))
 	if t.Done {
 		line = append(line, fmt.Sprintf("trace successed!"))
 	} else {
@@ -185,8 +187,11 @@ func (t *tracer) trace(startTTL uint8, tc *TraceResult, resCh chan *TraceResult)
 	defer t.traceResChMap.Delete(tc.id)
 	unReply := 0
 	maxTTl := tc.MaxTTL
+	total := 0
+	loss := 0
 	for ttl := startTTL; ttl <= maxTTl+4; ttl++ {
 		var pkg []byte
+		total++
 		start := time.Now()
 		tc.MaxTTL = ttl
 		if tc.IsIpv4 {
@@ -234,7 +239,9 @@ func (t *tracer) trace(startTTL uint8, tc *TraceResult, resCh chan *TraceResult)
 			select {
 			case <-to.C:
 				unReply++
+				loss++
 				if unReply >= t.maxUnReply {
+					tc.AvgPktLoss = float32(loss) / float32(total)
 					resCh <- tc
 					return
 				}
@@ -251,12 +258,14 @@ func (t *tracer) trace(startTTL uint8, tc *TraceResult, resCh chan *TraceResult)
 					r.Reached = true
 					tc.Done = true
 					tc.Res = append(tc.Res, r)
+					tc.AvgPktLoss = float32(loss) / float32(total)
 					resCh <- tc
 					return
 				}
 				if r.Reached {
 					tc.Done = true
 					tc.Res = append(tc.Res, r)
+					tc.AvgPktLoss = float32(loss) / float32(total)
 					resCh <- tc
 					return
 				}
@@ -264,6 +273,9 @@ func (t *tracer) trace(startTTL uint8, tc *TraceResult, resCh chan *TraceResult)
 				break For
 			}
 		}
+	}
+	if total > 0 {
+		tc.AvgPktLoss = float32(loss) / float32(total)
 	}
 	resCh <- tc
 	return

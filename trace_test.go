@@ -8,8 +8,8 @@ import (
 
 func TestTrace(t *testing.T) {
 	tr, err := NewTrace(Config{
-		UDP: true,
-		//ICMP:        true,
+		// UDP: true,
+		ICMP:        true,
 		MaxUnReply:  8,
 		NextHopWait: time.Millisecond * 100,
 	})
@@ -17,11 +17,12 @@ func TestTrace(t *testing.T) {
 		panic(err)
 	}
 	tc, err := GetTrace(&Trace{
-		SrcAddr: "10.23.228.78",
-		DstAddr: "172.16.57.12",
-		SrcPort: 65535,
+		// SrcAddr: "10.23.228.78",
+		SrcAddr: "172.16.57.12",
+		DstAddr: "10.23.228.78",
+		SrcPort: 65523,
 		DstPort: 65535,
-		MaxTTL:  30,
+		MaxTTL:  60,
 		Retry:   0,
 	})
 	if err != nil {
