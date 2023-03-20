@@ -157,6 +157,9 @@ func (t *tracer) Close() {
 }
 
 func (t *tracer) BatchTrace(batch []Trace, startTTL uint8) []TraceResult {
+	if len(batch) == 0 {
+		return nil
+	}
 	var result []TraceResult
 	ch := make(chan *TraceResult, len(batch))
 	for idx, b := range batch {
