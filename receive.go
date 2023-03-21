@@ -46,15 +46,17 @@ func newRcvIpv4() (Receiver, error) {
 	if err != nil {
 		return nil, err
 	}
+	err = setSockOptRcvTimeout(fd, time.Second)
+	if err != nil {
+		return nil, err
+	}
 	ctx, cancel := context.WithCancel(context.Background())
 	rc := &rcvIpv4{
 		fd:     fd,
 		ctx:    ctx,
 		cancel: cancel,
 	}
-	ro := time.Second
-	tv := unix.NsecToTimeval(ro.Nanoseconds())
-	err = unix.SetsockoptTimeval(fd, unix.SOL_SOCKET, unix.SO_RCVTIMEO, &tv)
+
 	return rc, err
 }
 
