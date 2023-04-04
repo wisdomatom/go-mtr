@@ -211,7 +211,7 @@ func (t *tracer) BatchTrace(batch []Trace, startTTL uint8) []TraceResult {
 
 func (t *tracer) trace(startTTL uint8, tc *TraceResult, resCh chan *TraceResult) {
 	var err error
-	ch := make(chan *ICMPRcv)
+	ch := make(chan *ICMPRcv, 100)
 	t.traceResChMap.Store(tc.Key, ch)
 	defer t.traceResChMap.Delete(tc.Key)
 	unReply := 0

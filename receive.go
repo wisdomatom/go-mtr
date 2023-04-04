@@ -3,6 +3,7 @@ package go_mtr
 import (
 	"context"
 	"golang.org/x/sys/unix"
+	"time"
 )
 
 type Receiver interface {
@@ -45,13 +46,18 @@ func newRcvIpv4() (Receiver, error) {
 	if err != nil {
 		return nil, err
 	}
+	err = setSockOptRcvTimeout(fd, time.Second)
+	if err != nil {
+		return nil, err
+	}
 	ctx, cancel := context.WithCancel(context.Background())
 	rc := &rcvIpv4{
 		fd:     fd,
 		ctx:    ctx,
 		cancel: cancel,
 	}
-	return rc, nil
+
+	return rc, err
 }
 
 func (r *rcvIpv4) Receive() chan []byte {
