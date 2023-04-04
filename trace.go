@@ -215,10 +215,9 @@ func (t *tracer) trace(startTTL uint8, tc *TraceResult, resCh chan *TraceResult)
 	t.traceResChMap.Store(tc.Key, ch)
 	defer t.traceResChMap.Delete(tc.Key)
 	unReply := 0
-	maxTTl := tc.MaxTTL
 	total := 0
 	loss := 0
-	for ttl := startTTL; ttl <= maxTTl+uint8(t.maxUnReply); ttl++ {
+	for ttl := startTTL; ttl <= tc.MaxTTL; ttl++ {
 		var pkg []byte
 		total++
 		start := time.Now()
