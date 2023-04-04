@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -19,6 +20,8 @@ type tracer struct {
 	ipv4          *tracerIpv4
 	ipv6          *tracerIpv6
 	traceResChMap *sync.Map
+	atomId        uint32
+	conf          Config
 }
 
 type tracerIpv4 struct {
@@ -36,15 +39,18 @@ type tracerIpv6 struct {
 }
 
 type TraceResult struct {
-	id string
+	Id  uint16
+	Key string
 	Trace
-	StartAt time.Time
-	Done    bool
-	Res     []TraceRes
+	StartAt    time.Time
+	Done       bool
+	AvgPktLoss float32
+	Res        []TraceRes
 }
 
 func (t TraceResult) Marshal() string {
 	var line []string
+	line = append(line, fmt.Sprintf("id:%-5d key:%-35v", t.Id, t.Key))
 	for _, r := range t.Res {
 		line = append(line, fmt.Sprintf("ttl:%-4d hop:%-16s src:%-16s dst:%-16s  latency:%-14v reached:%-6v",
 			r.TTL,
@@ -55,6 +61,7 @@ func (t TraceResult) Marshal() string {
 			r.Reached,
 		))
 	}
+	line = append(line, fmt.Sprintf("pkg_loss:%6v", t.AvgPktLoss))
 	if t.Done {
 		line = append(line, fmt.Sprintf("trace successed!"))
 	} else {
@@ -78,6 +85,7 @@ func NewTrace(conf Config) (Tracer, error) {
 		ipv4:          ipv4,
 		ipv6:          ipv6,
 		traceResChMap: &sync.Map{},
+		conf:          conf,
 	}
 	return tc, nil
 }
@@ -114,9 +122,26 @@ func tracerI6(conf Config) (*tracerIpv6, error) {
 	}, nil
 }
 
+func (t *tracer) getAtomId() uint16 {
+	n := atomic.AddUint32(&t.atomId, 1)
+	return uint16(n % 65535)
+}
+
+func (t *tracer) tracerKey(id uint16, src string, srcPort uint16, dst string, dstPort uint16) string {
+	if t.conf.UDP {
+		key := fmt.Sprintf("%v:%v:%v-%v:%v", id, src, srcPort, dst, dstPort)
+		return key
+	}
+	if t.conf.ICMP {
+		key := fmt.Sprintf("%v:%v-%v", id, src, dst)
+		return key
+	}
+	return fmt.Sprintf("%v:%v-%v", id, src, dst)
+}
+
 func (t *tracer) handleRcv(rcv *ICMPRcv) {
-	id := fmt.Sprintf("%v-%v", rcv.Src, rcv.Dst)
-	chI, ok := t.traceResChMap.Load(id)
+	key := t.tracerKey(rcv.Id, rcv.Src, rcv.SrcPort, rcv.Dst, rcv.DstPort)
+	chI, ok := t.traceResChMap.Load(key)
 	if !ok {
 		return
 	}
@@ -155,11 +180,17 @@ func (t *tracer) Close() {
 }
 
 func (t *tracer) BatchTrace(batch []Trace, startTTL uint8) []TraceResult {
+	if len(batch) == 0 {
+		return nil
+	}
 	var result []TraceResult
 	ch := make(chan *TraceResult, len(batch))
 	for idx, b := range batch {
+		atomId := t.getAtomId()
+		key := t.tracerKey(atomId, b.SrcAddr, b.SrcPort, b.DstAddr, b.DstPort)
 		tr := TraceResult{
-			id:      fmt.Sprintf("%v-%v", b.SrcAddr, b.DstAddr),
+			Id:      atomId,
+			Key:     key,
 			Trace:   batch[idx],
 			StartAt: time.Time{},
 			Done:    false,
@@ -180,19 +211,22 @@ func (t *tracer) BatchTrace(batch []Trace, startTTL uint8) []TraceResult {
 
 func (t *tracer) trace(startTTL uint8, tc *TraceResult, resCh chan *TraceResult) {
 	var err error
-	ch := make(chan *ICMPRcv)
-	t.traceResChMap.Store(tc.id, ch)
-	defer t.traceResChMap.Delete(tc.id)
+	ch := make(chan *ICMPRcv, 100)
+	t.traceResChMap.Store(tc.Key, ch)
+	defer t.traceResChMap.Delete(tc.Key)
 	unReply := 0
 	maxTTl := tc.MaxTTL
-	for ttl := startTTL; ttl <= maxTTl+4; ttl++ {
+	total := 0
+	loss := 0
+	for ttl := startTTL; ttl <= maxTTl+uint8(t.maxUnReply); ttl++ {
 		var pkg []byte
+		total++
 		start := time.Now()
 		tc.MaxTTL = ttl
 		if tc.IsIpv4 {
 			pkg, err = t.ipv4.constructor.Packet(ConstructPacket{
 				Trace:   tc.Trace,
-				Id:      uint16(ttl),
+				Id:      tc.Id,
 				Seq:     uint16(ttl),
 				SrcPort: tc.SrcPort,
 				DstPort: tc.DstPort,
@@ -211,7 +245,7 @@ func (t *tracer) trace(startTTL uint8, tc *TraceResult, resCh chan *TraceResult)
 		} else {
 			pkg, err = t.ipv6.constructor.Packet(ConstructPacket{
 				Trace:   tc.Trace,
-				Id:      uint16(ttl),
+				Id:      tc.Id,
 				Seq:     uint16(ttl),
 				SrcPort: tc.SrcPort,
 				DstPort: tc.DstPort,
@@ -234,7 +268,9 @@ func (t *tracer) trace(startTTL uint8, tc *TraceResult, resCh chan *TraceResult)
 			select {
 			case <-to.C:
 				unReply++
+				loss++
 				if unReply >= t.maxUnReply {
+					tc.AvgPktLoss = float32(loss) / float32(total)
 					resCh <- tc
 					return
 				}
@@ -251,12 +287,14 @@ func (t *tracer) trace(startTTL uint8, tc *TraceResult, resCh chan *TraceResult)
 					r.Reached = true
 					tc.Done = true
 					tc.Res = append(tc.Res, r)
+					tc.AvgPktLoss = float32(loss) / float32(total)
 					resCh <- tc
 					return
 				}
 				if r.Reached {
 					tc.Done = true
 					tc.Res = append(tc.Res, r)
+					tc.AvgPktLoss = float32(loss) / float32(total)
 					resCh <- tc
 					return
 				}
@@ -264,6 +302,9 @@ func (t *tracer) trace(startTTL uint8, tc *TraceResult, resCh chan *TraceResult)
 				break For
 			}
 		}
+	}
+	if total > 0 {
+		tc.AvgPktLoss = float32(loss) / float32(total)
 	}
 	resCh <- tc
 	return
