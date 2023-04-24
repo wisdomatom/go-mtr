@@ -52,52 +52,53 @@ func (t TraceResult) Marshal() string {
 	var line []string
 	line = append(line, fmt.Sprintf("id:%-5d key:%-35v", t.Id, t.Key))
 	for _, r := range t.Res {
-		line = append(line, fmt.Sprintf("ttl:%-4d hop:%-16s src:%-16s dst:%-16s  latency:%-14v packet_loss:%-.2f",
+		line = append(line, fmt.Sprintf("ttl:%-4d hop:%-16s src:%-16s dst:%-16s  latency:%-14v packet_loss:%-.2f  reached:%-5v",
 			r.TTL,
 			r.SrcTTL,
 			t.SrcAddr,
 			t.DstAddr,
 			r.Latency.String(),
 			r.PacketLoss,
+			r.Reached,
 		))
 	}
 	line = append(line, fmt.Sprintf("pkg_loss:%6v", t.AvgPktLoss))
 	if t.Done {
-		line = append(line, fmt.Sprintf("trace successed!"))
+		line = append(line, "trace successed!")
 	} else {
-		line = append(line, fmt.Sprintf("trace failed!"))
+		line = append(line, "trace failed!")
 	}
 	return strings.Join(line, "\n")
 }
 
-func (t TraceResult) MarshalAggregate() string {
+func (t TraceResult) Aggregate() TraceResult {
 	var agg []TraceRes
-	var ttl uint8
 	var latency time.Duration
 	var successed int
 	var total int
 	for idx, r := range t.Res {
+		latency += t.Res[idx].Latency
 		total++
-		if ttl == 0 {
-			ttl = r.TTL
+		if r.Latency != 0 {
+			successed++
 		}
-		if r.TTL != ttl {
+		if (idx+1 < len(t.Res) && t.Res[idx+1].TTL != r.TTL) || idx == len(t.Res)-1 {
 			if successed > 0 {
 				t.Res[idx].Latency = latency / time.Duration(successed)
 			}
 			t.Res[idx].PacketLoss = float32(total-successed) / float32(total)
-			agg = append(agg, t.Res[idx-1])
+			agg = append(agg, t.Res[idx])
 			successed = 0
 			total = 0
 			latency = 0
-			ttl = r.TTL
-		}
-		latency += t.Res[idx].Latency
-		if r.Latency != 0 {
-			successed++
 		}
 	}
 	t.Res = agg
+	return t
+}
+
+func (t TraceResult) MarshalAggregate() string {
+	t = t.Aggregate()
 	return t.Marshal()
 }
 
@@ -310,8 +311,9 @@ func (t *tracer) trace(startTTL uint8, tc *TraceResult, resCh chan *TraceResult)
 						return
 					}
 					tc.Res = append(tc.Res, TraceRes{
-						Latency: 0,
-						TTL:     ttl,
+						Latency:    0,
+						TTL:        ttl,
+						PacketLoss: 1,
 					})
 					break For
 				case rcv := <-ch:
