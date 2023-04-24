@@ -45,6 +45,9 @@ func IsIpv4(ip string) bool {
 }
 
 func GetTrace(t *Trace) (*Trace, error) {
+	if t.Retry < 1 {
+		t.Retry = 1
+	}
 	src := net.ParseIP(t.SrcAddr)
 	if src == nil {
 		return t, fmt.Errorf("invalid src addr (%v)", t.SrcAddr)
