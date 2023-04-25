@@ -52,22 +52,54 @@ func (t TraceResult) Marshal() string {
 	var line []string
 	line = append(line, fmt.Sprintf("id:%-5d key:%-35v", t.Id, t.Key))
 	for _, r := range t.Res {
-		line = append(line, fmt.Sprintf("ttl:%-4d hop:%-16s src:%-16s dst:%-16s  latency:%-14v reached:%-6v",
+		line = append(line, fmt.Sprintf("ttl:%-4d hop:%-16s src:%-16s dst:%-16s  latency:%-14v packet_loss:%-.2f  reached:%-5v",
 			r.TTL,
 			r.SrcTTL,
 			t.SrcAddr,
 			t.DstAddr,
 			r.Latency.String(),
+			r.PacketLoss,
 			r.Reached,
 		))
 	}
 	line = append(line, fmt.Sprintf("pkg_loss:%6v", t.AvgPktLoss))
 	if t.Done {
-		line = append(line, fmt.Sprintf("trace successed!"))
+		line = append(line, "trace successed!")
 	} else {
-		line = append(line, fmt.Sprintf("trace failed!"))
+		line = append(line, "trace failed!")
 	}
 	return strings.Join(line, "\n")
+}
+
+func (t TraceResult) Aggregate() TraceResult {
+	var agg []TraceRes
+	var latency time.Duration
+	var successed int
+	var total int
+	for idx, r := range t.Res {
+		latency += t.Res[idx].Latency
+		total++
+		if r.Latency != 0 {
+			successed++
+		}
+		if (idx+1 < len(t.Res) && t.Res[idx+1].TTL != r.TTL) || idx == len(t.Res)-1 {
+			if successed > 0 {
+				t.Res[idx].Latency = latency / time.Duration(successed)
+			}
+			t.Res[idx].PacketLoss = float32(total-successed) / float32(total)
+			agg = append(agg, t.Res[idx])
+			successed = 0
+			total = 0
+			latency = 0
+		}
+	}
+	t.Res = agg
+	return t
+}
+
+func (t TraceResult) MarshalAggregate() string {
+	t = t.Aggregate()
+	return t.Marshal()
 }
 
 func NewTrace(conf Config) (Tracer, error) {
@@ -198,19 +230,22 @@ func (t *tracer) BatchTrace(batch []Trace, startTTL uint8) []TraceResult {
 		}
 		go t.trace(startTTL, &tr, ch)
 	}
-	for {
-		select {
-		case r := <-ch:
-			result = append(result, *r)
-			if len(result) == len(batch) {
-				return result
-			}
+	for r := range ch {
+		if r == nil {
+			break
+		}
+		result = append(result, *r)
+		if len(result) == len(batch) {
+			close(ch)
+			break
 		}
 	}
+	return result
 }
 
 func (t *tracer) trace(startTTL uint8, tc *TraceResult, resCh chan *TraceResult) {
 	var err error
+	var reached bool
 	ch := make(chan *ICMPRcv, 100)
 	t.traceResChMap.Store(tc.Key, ch)
 	defer t.traceResChMap.Delete(tc.Key)
@@ -218,93 +253,103 @@ func (t *tracer) trace(startTTL uint8, tc *TraceResult, resCh chan *TraceResult)
 	total := 0
 	loss := 0
 	for ttl := startTTL; ttl <= tc.MaxTTL; ttl++ {
-		var pkg []byte
-		total++
-		start := time.Now()
-		tc.MaxTTL = ttl
-		if tc.IsIpv4 {
-			pkg, err = t.ipv4.constructor.Packet(ConstructPacket{
-				Trace:   tc.Trace,
-				Id:      tc.Id,
-				Seq:     uint16(ttl),
-				SrcPort: tc.SrcPort,
-				DstPort: tc.DstPort,
-			})
-			if err != nil {
-				continue
+		for r := 0; r < tc.Retry; r++ {
+			var pkg []byte
+			total++
+			start := time.Now()
+			if tc.IsIpv4 {
+				pkg, err = t.ipv4.constructor.Packet(ConstructPacket{
+					Trace:   tc.Trace,
+					TTL:     uint8(ttl),
+					Id:      tc.Id,
+					Seq:     uint16(ttl),
+					SrcPort: tc.SrcPort,
+					DstPort: tc.DstPort,
+				})
+				if err != nil {
+					continue
+				}
+				err = t.ipv4.detector.Probe(SendProbe{
+					Trace:        tc.Trace,
+					WriteTimeout: time.Duration(1) * time.Second,
+					Msg:          pkg,
+				})
+				if err != nil {
+					continue
+				}
+			} else {
+				pkg, err = t.ipv6.constructor.Packet(ConstructPacket{
+					Trace:   tc.Trace,
+					TTL:     uint8(ttl),
+					Id:      tc.Id,
+					Seq:     uint16(ttl),
+					SrcPort: tc.SrcPort,
+					DstPort: tc.DstPort,
+				})
+				if err != nil {
+					continue
+				}
+				err := t.ipv6.detector.Probe(SendProbe{
+					Trace:        tc.Trace,
+					WriteTimeout: time.Duration(1) * time.Second,
+					Msg:          pkg,
+				})
+				if err != nil {
+					continue
+				}
 			}
-			err = t.ipv4.detector.Probe(SendProbe{
-				Trace:        tc.Trace,
-				WriteTimeout: time.Duration(1) * time.Second,
-				Msg:          pkg,
-			})
-			if err != nil {
-				continue
-			}
-		} else {
-			pkg, err = t.ipv6.constructor.Packet(ConstructPacket{
-				Trace:   tc.Trace,
-				Id:      tc.Id,
-				Seq:     uint16(ttl),
-				SrcPort: tc.SrcPort,
-				DstPort: tc.DstPort,
-			})
-			if err != nil {
-				continue
-			}
-			err := t.ipv6.detector.Probe(SendProbe{
-				Trace:        tc.Trace,
-				WriteTimeout: time.Duration(1) * time.Second,
-				Msg:          pkg,
-			})
-			if err != nil {
-				continue
+			to := time.NewTimer(t.nextHopWait)
+		For:
+			for {
+				select {
+				case <-to.C:
+					unReply++
+					loss++
+					if unReply >= t.maxUnReply {
+						tc.AvgPktLoss = float32(loss) / float32(total)
+						resCh <- tc
+						return
+					}
+					tc.Res = append(tc.Res, TraceRes{
+						Latency:    0,
+						TTL:        ttl,
+						PacketLoss: 1,
+					})
+					break For
+				case rcv := <-ch:
+					unReply = 0
+					r := TraceRes{
+						SrcTTL:  rcv.TTLSrc,
+						Latency: time.Since(start),
+						TTL:     ttl,
+						Reached: false,
+					}
+					if rcv.RcvType == ICMPEcho || rcv.RcvType == ICMPUnreachable {
+						r.Reached = true
+						tc.Done = true
+						tc.Res = append(tc.Res, r)
+						tc.AvgPktLoss = float32(loss) / float32(total)
+						reached = true
+						break For
+					}
+					if r.Reached {
+						tc.Done = true
+						tc.Res = append(tc.Res, r)
+						tc.AvgPktLoss = float32(loss) / float32(total)
+						reached = true
+						break For
+					}
+					tc.Res = append(tc.Res, r)
+					break For
+				}
 			}
 		}
-		to := time.NewTimer(t.nextHopWait)
-	For:
-		for {
-			select {
-			case <-to.C:
-				unReply++
-				loss++
-				if unReply >= t.maxUnReply {
-					tc.AvgPktLoss = float32(loss) / float32(total)
-					resCh <- tc
-					return
-				}
-				break For
-			case rcv := <-ch:
-				unReply = 0
-				r := TraceRes{
-					SrcTTL:  rcv.TTLSrc,
-					Latency: time.Now().Sub(start),
-					TTL:     rcv.TTL,
-					Reached: false,
-				}
-				if rcv.RcvType == ICMPEcho || rcv.RcvType == ICMPUnreachable {
-					r.Reached = true
-					tc.Done = true
-					tc.Res = append(tc.Res, r)
-					tc.AvgPktLoss = float32(loss) / float32(total)
-					resCh <- tc
-					return
-				}
-				if r.Reached {
-					tc.Done = true
-					tc.Res = append(tc.Res, r)
-					tc.AvgPktLoss = float32(loss) / float32(total)
-					resCh <- tc
-					return
-				}
-				tc.Res = append(tc.Res, r)
-				break For
-			}
+		if reached {
+			break
 		}
 	}
 	if total > 0 {
 		tc.AvgPktLoss = float32(loss) / float32(total)
 	}
 	resCh <- tc
-	return
 }

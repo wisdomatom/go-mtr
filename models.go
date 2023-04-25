@@ -27,8 +27,9 @@ type Trace struct {
 }
 
 type TraceRes struct {
-	SrcTTL  string
-	Latency time.Duration
-	TTL     uint8
-	Reached bool
+	SrcTTL     string
+	Latency    time.Duration
+	TTL        uint8
+	Reached    bool
+	PacketLoss float32
 }

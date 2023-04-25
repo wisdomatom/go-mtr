@@ -36,6 +36,7 @@ func newConstructIpv6(conf Config) Constructor {
 
 type ConstructPacket struct {
 	Trace
+	TTL     uint8
 	Id      uint16
 	Seq     uint16
 	SrcPort uint16
@@ -218,7 +219,7 @@ func (c *constructIpv4) ipv4Header(req ConstructPacket, proto uint8) (*headerIpv
 		length:   0,
 		id:       req.Id,
 		off:      0,
-		ttl:      req.MaxTTL,
+		ttl:      req.TTL,
 		proto:    proto,
 		checkSum: 0,
 		src:      [4]byte{ip4Src[0], ip4Src[1], ip4Src[2], ip4Src[3]},
