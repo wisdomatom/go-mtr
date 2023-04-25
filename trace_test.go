@@ -11,8 +11,8 @@ func mockTrace() []Trace {
 	var data []Trace
 	var dataT = []Trace{
 		{
-			SrcAddr: "10.23.228.22",
-			DstAddr: "172.16.57.12",
+			SrcAddr: GetOutbondIP(),
+			DstAddr: "8.8.8.8",
 			SrcPort: 65523,
 			DstPort: 65535,
 			MaxTTL:  60,
@@ -40,12 +40,12 @@ func TestTrace(t *testing.T) {
 		panic(err)
 	}
 	tc, err := GetTrace(&Trace{
-		SrcAddr: "172.16.56.90",
-		DstAddr: "172.22.79.13",
+		SrcAddr: GetOutbondIP(),
+		DstAddr: "8.8.8.8",
 		SrcPort: 65523,
 		DstPort: 65535,
 		MaxTTL:  60,
-		Retry:   5,
+		Retry:   2,
 	})
 	if err != nil {
 		panic(err)

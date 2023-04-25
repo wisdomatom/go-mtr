@@ -94,3 +94,13 @@ func GetTrace(t *Trace) (*Trace, error) {
 	}
 	return t, nil
 }
+
+// GetOutbondIP return default local ip which used to route packages outbond
+func GetOutbondIP() string {
+	conn, err := net.Dial("udp", "8.8.8.8:80")
+	if err != nil {
+		panic(err)
+	}
+	local := conn.LocalAddr().(*net.UDPAddr)
+	return local.IP.String()
+}

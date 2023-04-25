@@ -14,12 +14,12 @@ var (
 
 func init() {
 	root = &cobra.Command{
-		Use:   "IP detect and route trace",
-		Short: "IP detect and route trace",
+		Use:   "mtr detect and route trace",
+		Short: "mtr detect and route trace",
 		Run:   run,
 	}
 	cobra.OnInitialize()
-	root.PersistentFlags().StringP("source", "s", "0.0.0.0", "source ip address, config which nic to send probe packet, 源IP")
+	root.PersistentFlags().StringP("source", "s", go_mtr.GetOutbondIP(), "source ip address, config which nic to send probe packet, 源IP")
 	root.PersistentFlags().StringP("target", "t", "8.8.8.8", "target ip address, 目的IP")
 	root.PersistentFlags().Uint16("source_port", 65533, "source port, 源端口")
 	root.PersistentFlags().Uint16("target_port", 65535, "target port, 目的端口")
@@ -28,6 +28,7 @@ func init() {
 	root.PersistentFlags().String("type", "icmp", "detect type, icmp/udp proto")
 	root.PersistentFlags().Duration("timeout_per_hop", time.Millisecond*200, "timeout per hop")
 	root.PersistentFlags().Int("start_ttl", 1, "start ttl")
+	root.PersistentFlags().Uint8("max_ttl", 30, "max ttl")
 }
 
 func run(cmd *cobra.Command, args []string) {
@@ -40,6 +41,7 @@ func run(cmd *cobra.Command, args []string) {
 	tp, _ := root.PersistentFlags().GetString("type")
 	to, _ := root.PersistentFlags().GetDuration("timeout_per_hop")
 	ttlStart, _ := root.PersistentFlags().GetInt("start_ttl")
+	ttlMax, _ := root.PersistentFlags().GetUint8("max_ttl")
 	conf := go_mtr.Config{
 		MaxUnReply:  maxUnreply,
 		NextHopWait: to,
@@ -55,13 +57,17 @@ func run(cmd *cobra.Command, args []string) {
 		fmt.Printf("init trace error (%v)\n", err)
 		return
 	}
+	go tracer.Listen()
+	defer tracer.Close()
 	t, err := go_mtr.GetTrace(&go_mtr.Trace{
 		SrcAddr: source,
 		DstAddr: target,
 		SrcPort: sPort,
 		DstPort: dPort,
+		MaxTTL:  ttlMax,
 		Retry:   retry,
 	})
+	fmt.Println(source, target, sPort, dPort, retry, maxUnreply, tp, to, ttlStart)
 	if err != nil {
 		fmt.Printf("trace param error (%v)", err)
 		return
