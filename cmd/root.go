@@ -21,7 +21,7 @@ func init() {
 	}
 	cobra.OnInitialize()
 	root.PersistentFlags().StringP("source", "s", go_mtr.GetOutbondIP(), "source ip address, config which nic to send probe packet, 源IP")
-	root.PersistentFlags().StringP("target", "t", "8.8.8.8", "target ip address, 目的IP")
+	root.PersistentFlags().StringP("target", "t", "127.0.0.1", "target ip address, 目的IP")
 	root.PersistentFlags().Uint16("source_port", 65533, "source port, 源端口")
 	root.PersistentFlags().Uint16("target_port", 65535, "target port, 目的端口")
 	root.PersistentFlags().IntP("count", "c", 1, "how many times retry on each hop, 每跳ttl重试次数")
