@@ -52,7 +52,7 @@ func (t TraceResult) Marshal() string {
 	var line []string
 	line = append(line, fmt.Sprintf("id:%-5d key:%-35v", t.Id, t.Key))
 	for _, r := range t.Res {
-		line = append(line, fmt.Sprintf("ttl:%-4d hop:%-16s src:%-16s dst:%-16s  latency:%-14v packet_loss:%-.2f  reached:%-5v",
+		line = append(line, fmt.Sprintf("ttl:%-4d hop:%-16s src:%-16s dst:%-16s  latency:%-14v packet_loss:%-.2f%%  reached:%-5v",
 			r.TTL,
 			r.SrcTTL,
 			t.SrcAddr,
@@ -62,7 +62,7 @@ func (t TraceResult) Marshal() string {
 			r.Reached,
 		))
 	}
-	line = append(line, fmt.Sprintf("pkg_loss:%6v", t.AvgPktLoss))
+	line = append(line, fmt.Sprintf("pkg_loss:%.2f%%", t.AvgPktLoss))
 	if t.Done {
 		line = append(line, "trace successed!")
 	} else {
@@ -253,6 +253,7 @@ func (t *tracer) trace(startTTL uint8, tc *TraceResult, resCh chan *TraceResult)
 	total := 0
 	loss := 0
 	for ttl := startTTL; ttl <= tc.MaxTTL; ttl++ {
+		ttlWithReply := false
 		for r := 0; r < tc.Retry; r++ {
 			var pkg []byte
 			total++
@@ -303,13 +304,7 @@ func (t *tracer) trace(startTTL uint8, tc *TraceResult, resCh chan *TraceResult)
 			for {
 				select {
 				case <-to.C:
-					unReply++
 					loss++
-					if unReply >= t.maxUnReply {
-						tc.AvgPktLoss = float32(loss) / float32(total)
-						resCh <- tc
-						return
-					}
 					tc.Res = append(tc.Res, TraceRes{
 						Latency:    0,
 						TTL:        ttl,
@@ -317,7 +312,7 @@ func (t *tracer) trace(startTTL uint8, tc *TraceResult, resCh chan *TraceResult)
 					})
 					break For
 				case rcv := <-ch:
-					unReply = 0
+					ttlWithReply = true
 					r := TraceRes{
 						SrcTTL:  rcv.TTLSrc,
 						Latency: time.Since(start),
@@ -343,6 +338,16 @@ func (t *tracer) trace(startTTL uint8, tc *TraceResult, resCh chan *TraceResult)
 					break For
 				}
 			}
+		}
+		if !ttlWithReply {
+			unReply++
+			if unReply >= t.maxUnReply {
+				tc.AvgPktLoss = float32(loss) / float32(total)
+				resCh <- tc
+				return
+			}
+		} else {
+			unReply = 0
 		}
 		if reached {
 			break

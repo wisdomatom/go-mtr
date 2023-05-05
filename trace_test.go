@@ -19,7 +19,7 @@ func mockTrace() []Trace {
 			Retry:   0,
 		},
 	}
-	for idx, _ := range dataT {
+	for idx := range dataT {
 		d, err := GetTrace(&dataT[idx])
 		if err != nil {
 			continue
