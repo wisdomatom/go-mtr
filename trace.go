@@ -50,7 +50,6 @@ type TraceResult struct {
 
 func (t TraceResult) Marshal() string {
 	var line []string
-	line = append(line, fmt.Sprintf("id:%-5d key:%-35v", t.Id, t.Key))
 	for _, r := range t.Res {
 		line = append(line, fmt.Sprintf("ttl:%-4d| hop:%-16s| src:%-16s| dst:%-16s|  latency:%13v| packet_loss:%7.2f%%|  reached:%-5v",
 			r.TTL,
@@ -62,7 +61,8 @@ func (t TraceResult) Marshal() string {
 			r.Reached,
 		))
 	}
-	line = append(line, fmt.Sprintf("pkg_loss:%.2f%%", t.AvgPktLoss))
+	line = append(line, fmt.Sprintf("debug id:%-5d key:%-35v", t.Id, t.Key))
+	line = append(line, fmt.Sprintf("pkg_loss:%.2f%%", t.AvgPktLoss*100))
 	if t.Done {
 		line = append(line, "trace successed!")
 	} else {
