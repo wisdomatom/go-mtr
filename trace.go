@@ -76,17 +76,22 @@ func (t TraceResult) Aggregate() TraceResult {
 	var latency time.Duration
 	var successed int
 	var total int
+	var hop string
 	for idx, r := range t.Res {
 		latency += t.Res[idx].Latency
 		total++
 		if r.Latency != 0 {
 			successed++
 		}
+		if r.SrcTTL != "" {
+			hop = r.SrcTTL
+		}
 		if (idx+1 < len(t.Res) && t.Res[idx+1].TTL != r.TTL) || idx == len(t.Res)-1 {
 			if successed > 0 {
 				t.Res[idx].Latency = latency / time.Duration(successed)
 			}
 			t.Res[idx].PacketLoss = float32(total-successed) / float32(total)
+			t.Res[idx].SrcTTL = hop
 			agg = append(agg, t.Res[idx])
 			successed = 0
 			total = 0
