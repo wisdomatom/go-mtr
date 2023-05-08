@@ -52,13 +52,13 @@ func (t TraceResult) Marshal() string {
 	var line []string
 	line = append(line, fmt.Sprintf("id:%-5d key:%-35v", t.Id, t.Key))
 	for _, r := range t.Res {
-		line = append(line, fmt.Sprintf("ttl:%-4d hop:%-16s src:%-16s dst:%-16s  latency:%-14v packet_loss:%-.2f%%  reached:%-5v",
+		line = append(line, fmt.Sprintf("ttl:%-4d| hop:%-16s| src:%-16s| dst:%-16s|  latency:%13v| packet_loss:%7.2f%%|  reached:%-5v",
 			r.TTL,
 			r.SrcTTL,
 			t.SrcAddr,
 			t.DstAddr,
 			r.Latency.String(),
-			r.PacketLoss,
+			r.PacketLoss*100,
 			r.Reached,
 		))
 	}
