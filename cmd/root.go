@@ -71,7 +71,7 @@ func run(cmd *cobra.Command, args []string) {
 		MaxTTL:  ttlMax,
 		Retry:   retry,
 	})
-	fmt.Println(source, target, sPort, dPort, retry, maxUnreply, tp, to, ttlStart)
+	fmt.Println("source:", source, "source_port:", sPort, "target:", target, "tareget_port:", dPort, "count:", retry, "max_unreply:", maxUnreply, "type:", tp, "timeout:", to, "ttl_start:", ttlStart)
 	if err != nil {
 		fmt.Printf("trace param error (%v)", err)
 		return
