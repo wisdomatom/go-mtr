@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net"
 	"runtime"
+	"time"
 
 	"golang.org/x/sys/unix"
 )
@@ -72,11 +73,13 @@ type headerPseudo struct {
 }
 
 type headerICMPEcho struct {
-	typ      uint8
-	code     uint8
-	checkSum uint16
-	id       uint16
-	seq      uint16
+	typ       uint8
+	code      uint8
+	checkSum  uint16
+	id        uint16
+	seq       uint16
+	timestamp [8]byte
+	// data     [16]byte
 }
 
 func (h *headerIpv4) checksum() {
@@ -142,11 +145,13 @@ func (c *constructIpv4) packetICMP(req ConstructPacket) ([]byte, error) {
 		return nil, err
 	}
 	hdICMP := &headerICMPEcho{
-		typ:      8,
-		code:     0,
-		checkSum: 0,
-		id:       req.Id,
-		seq:      req.Seq,
+		typ:       8,
+		code:      0,
+		checkSum:  0,
+		id:        req.Id,
+		seq:       req.Seq,
+		timestamp: c.timestamp(),
+		// data:     [16]byte{},
 	}
 	hdICMP.checksum()
 
@@ -231,4 +236,16 @@ func (c *constructIpv4) ipv4Header(req ConstructPacket, proto uint8) (*headerIpv
 
 func (c *constructIpv4) icmp() {
 
+}
+
+func (c *constructIpv4) timestamp() [8]byte {
+	b := make([]byte, 8)
+	binary.LittleEndian.PutUint64(b, uint64(time.Now().Unix()))
+	return [8]byte{b[0], b[1], b[2], b[3], b[4], b[5], b[6], b[7]}
+}
+
+func (c *constructIpv4) uint32ToBytes(tracker uint32) []byte {
+	b := make([]byte, 4)
+	binary.BigEndian.PutUint32(b, tracker)
+	return b
 }
