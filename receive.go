@@ -61,7 +61,7 @@ func newRcvIpv4() (Receiver, error) {
 }
 
 func (r *rcvIpv4) Receive() chan []byte {
-	ch := make(chan []byte, 1000)
+	ch := make(chan []byte, 100000)
 	go func() {
 		for {
 			select {
