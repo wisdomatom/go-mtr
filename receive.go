@@ -2,6 +2,7 @@ package go_mtr
 
 import (
 	"context"
+	"fmt"
 	"golang.org/x/sys/unix"
 	"time"
 )
@@ -62,6 +63,7 @@ func newRcvIpv4() (Receiver, error) {
 
 func (r *rcvIpv4) Receive() chan []byte {
 	ch := make(chan []byte, 100000)
+	ticker := time.NewTicker(time.Second)
 	go func() {
 		for {
 			select {
@@ -75,7 +77,13 @@ func (r *rcvIpv4) Receive() chan []byte {
 			if err != nil {
 				continue
 			}
-			ch <- bts
+			ticker.Reset(time.Millisecond * 300)
+			fmt.Println("receive...")
+			select {
+			case ch <- bts:
+			case <-ticker.C:
+				fmt.Println("receive ch full")
+			}
 		}
 	}()
 	return ch
