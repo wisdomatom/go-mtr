@@ -15,13 +15,14 @@ type Tracer interface {
 }
 
 type tracer struct {
-	maxUnReply    int
-	nextHopWait   time.Duration
-	ipv4          *tracerIpv4
-	ipv6          *tracerIpv6
-	traceResChMap *sync.Map
-	atomId        uint32
-	conf          Config
+	maxUnReply       int
+	nextHopWait      time.Duration
+	ipv4             *tracerIpv4
+	ipv6             *tracerIpv6
+	traceResChMap    *sync.Map
+	atomId           uint32
+	conf             Config
+	receiveGoroutine int
 }
 
 type tracerIpv4 struct {
@@ -126,12 +127,16 @@ func NewTrace(conf Config) (Tracer, error) {
 		return nil, err
 	}
 	tc := &tracer{
-		nextHopWait:   conf.NextHopWait,
-		maxUnReply:    conf.MaxUnReply,
-		ipv4:          ipv4,
-		ipv6:          ipv6,
-		traceResChMap: &sync.Map{},
-		conf:          conf,
+		nextHopWait:      conf.NextHopWait,
+		maxUnReply:       conf.MaxUnReply,
+		ipv4:             ipv4,
+		ipv6:             ipv6,
+		traceResChMap:    &sync.Map{},
+		conf:             conf,
+		receiveGoroutine: conf.RcvGoroutineNum,
+	}
+	if tc.receiveGoroutine == 0 {
+		tc.receiveGoroutine = 5
 	}
 	return tc, nil
 }
@@ -198,24 +203,34 @@ func (t *tracer) handleRcv(rcv *ICMPRcv) {
 func (t *tracer) Listen() {
 	chIpv4 := t.ipv4.receiver.Receive()
 	chIpv6 := t.ipv6.receiver.Receive()
-	go func() {
-		for {
-			select {
-			case msg := <-chIpv4:
-				rcv, err := t.ipv4.deConstructor.DeConstruct(msg)
-				if err != nil {
-					continue
+	for i := 0; i < t.receiveGoroutine; i++ {
+		go func() {
+			for {
+				select {
+				case msg := <-chIpv4:
+					if len(msg) == 0 {
+						// chan has been closed by receiver goroutine should exit
+						return
+					}
+					rcv, err := t.ipv4.deConstructor.DeConstruct(msg)
+					if err != nil {
+						continue
+					}
+					t.handleRcv(rcv)
+				case msg := <-chIpv6:
+					if len(msg) == 0 {
+						// chan has been closed by receiver goroutine should exit
+						return
+					}
+					rcv, err := t.ipv6.deConstructor.DeConstruct(msg)
+					if err != nil {
+						continue
+					}
+					t.handleRcv(rcv)
 				}
-				t.handleRcv(rcv)
-			case msg := <-chIpv6:
-				rcv, err := t.ipv6.deConstructor.DeConstruct(msg)
-				if err != nil {
-					continue
-				}
-				t.handleRcv(rcv)
 			}
-		}
-	}()
+		}()
+	}
 }
 
 func (t *tracer) Close() {

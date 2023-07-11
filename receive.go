@@ -69,6 +69,8 @@ func (r *rcvIpv4) Receive() chan []byte {
 			select {
 			case <-r.ctx.Done():
 				unix.Close(r.fd)
+				// close ch when ctx done
+				close(ch)
 				return
 			default:
 			}
@@ -78,11 +80,10 @@ func (r *rcvIpv4) Receive() chan []byte {
 				continue
 			}
 			ticker.Reset(time.Millisecond * 300)
-			fmt.Println("receive...")
 			select {
 			case ch <- bts:
 			case <-ticker.C:
-				fmt.Println("receive ch full")
+				fmt.Printf("receive ch full (%v)\n", time.Now())
 			}
 		}
 	}()
