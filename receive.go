@@ -30,17 +30,17 @@ func newRcvIpv6() (Receiver, error) {
 
 type rcvIpv4 struct {
 	rcvMock
+	Config
 	fd     int
 	ctx    context.Context
 	cancel func()
 }
 
-func newRcvIpv4() (Receiver, error) {
+func newRcvIpv4(conf Config) (Receiver, error) {
 	var err error
 	var fd int
 	fd, err = unix.Socket(unix.AF_INET, unix.SOCK_RAW, unix.IPPROTO_ICMP)
 	if err != nil {
-
 		return nil, err
 	}
 	err = setSockOptReceiveErr(fd)
@@ -56,6 +56,7 @@ func newRcvIpv4() (Receiver, error) {
 		fd:     fd,
 		ctx:    ctx,
 		cancel: cancel,
+		Config: conf,
 	}
 
 	return rc, err
@@ -77,9 +78,7 @@ func (r *rcvIpv4) Receive() chan []byte {
 			bts := make([]byte, 512)
 			_, _, err := unix.Recvfrom(r.fd, bts, 0)
 			if err != nil {
-				continue
-			}
-			if len(bts) < 20 {
+				Error(r.ErrCh, fmt.Errorf("error: Recvfrom (%v)\n", err))
 				continue
 			}
 			if len(bts) > 20 && bts[20] == 8 {
@@ -90,7 +89,7 @@ func (r *rcvIpv4) Receive() chan []byte {
 			select {
 			case ch <- bts:
 			case <-ticker.C:
-				fmt.Printf("receive ch full (%v)\n", time.Now())
+				Error(r.ErrCh, fmt.Errorf("error: receive ch full (%v)\n", time.Now()))
 			}
 		}
 	}()

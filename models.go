@@ -13,6 +13,7 @@ type Config struct {
 	MaxUnReply      int
 	NextHopWait     time.Duration
 	RcvGoroutineNum int
+	ErrCh           chan error
 }
 
 type Trace struct {

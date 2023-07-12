@@ -20,9 +20,11 @@ type tracer struct {
 	ipv4             *tracerIpv4
 	ipv6             *tracerIpv6
 	traceResChMap    *sync.Map
+	filterMap        *sync.Map
 	atomId           uint32
 	conf             Config
 	receiveGoroutine int
+	errCh            chan error
 }
 
 type tracerIpv4 struct {
@@ -64,6 +66,7 @@ func (t TraceResult) Marshal() string {
 	}
 	line = append(line, fmt.Sprintf("debug id:%-5d key:%-35v", t.Id, t.Key))
 	line = append(line, fmt.Sprintf("pkg_loss:%.2f%%", t.AvgPktLoss*100))
+	line = append(line, fmt.Sprintf("%v", time.Now()))
 	if t.Done {
 		line = append(line, "trace successed!")
 	} else {
@@ -132,8 +135,10 @@ func NewTrace(conf Config) (Tracer, error) {
 		ipv4:             ipv4,
 		ipv6:             ipv6,
 		traceResChMap:    &sync.Map{},
+		filterMap:        &sync.Map{},
 		conf:             conf,
 		receiveGoroutine: conf.RcvGoroutineNum,
+		errCh:            conf.ErrCh,
 	}
 	if tc.receiveGoroutine == 0 {
 		tc.receiveGoroutine = 5
@@ -143,9 +148,9 @@ func NewTrace(conf Config) (Tracer, error) {
 
 func tracerI4(conf Config) (*tracerIpv4, error) {
 	con := newConstructIpv4(conf)
-	deCon := newDeconstructIpv4()
-	detector := newProbeIpv4()
-	rcv, err := newRcvIpv4()
+	deCon := newDeconstructIpv4(conf)
+	detector := newProbeIpv4(conf)
+	rcv, err := newRcvIpv4(conf)
 	if err != nil {
 		return nil, err
 	}
@@ -193,10 +198,8 @@ func (t *tracer) tracerKey(id uint16, src string, srcPort uint16, dst string, ds
 func (t *tracer) handleRcv(rcv *ICMPRcv) {
 	key := t.tracerKey(rcv.Id, rcv.Src, rcv.SrcPort, rcv.Dst, rcv.DstPort)
 	chI, ok := t.traceResChMap.Load(key)
-	if strings.Contains(key, "172.22.8.21-172.19.8.16") {
-		fmt.Println("debug>>", key, ok)
-	}
 	if !ok {
+		Error(t.errCh, fmt.Errorf("error: drop(%v)(%v)", key, time.Now()))
 		return
 	}
 	ch := chI.(chan *ICMPRcv)
@@ -215,9 +218,12 @@ func (t *tracer) Listen() {
 						// chan has been closed by receiver goroutine should exit
 						return
 					}
+					if !t.ipv4Filter(msg) {
+						continue
+					}
 					rcv, err := t.ipv4.deConstructor.DeConstruct(msg)
 					if err != nil {
-						fmt.Println("ipv4 deconstruct error:", err)
+						Error(t.errCh, fmt.Errorf("error: ipv4 deconstruct (%v)\n", err))
 						continue
 					}
 					t.handleRcv(rcv)
@@ -276,12 +282,19 @@ func (t *tracer) BatchTrace(batch []Trace, startTTL uint8) []TraceResult {
 	return result
 }
 
+func (t *tracer) filterKey(srcIp, dstIp string) string {
+	return fmt.Sprintf("%v-%v", srcIp, dstIp)
+}
+
 func (t *tracer) trace(startTTL uint8, tc *TraceResult, resCh chan *TraceResult) {
 	var err error
 	var reached bool
 	ch := make(chan *ICMPRcv, 100)
 	t.traceResChMap.Store(tc.Key, ch)
 	defer t.traceResChMap.Delete(tc.Key)
+	filterKey := t.filterKey(tc.SrcAddr, tc.DstAddr)
+	t.filterMap.Store(filterKey, struct{}{})
+	defer t.filterMap.Delete(filterKey)
 	unReply := 0
 	total := 0
 	loss := 0

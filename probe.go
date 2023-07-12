@@ -21,6 +21,7 @@ func (*detectMock) Close() {}
 
 type probeIpv4 struct {
 	detectMock
+	Config
 }
 
 type probeIpv6 struct {
@@ -37,8 +38,8 @@ type SendProbe struct {
 	Msg          []byte
 }
 
-func newProbeIpv4() Detector {
-	p4 := &probeIpv4{}
+func newProbeIpv4(conf Config) Detector {
+	p4 := &probeIpv4{Config: conf}
 	return p4
 }
 

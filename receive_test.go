@@ -10,11 +10,12 @@ func fmtICMPRcv(r *ICMPRcv) {
 }
 
 func TestReceive(t *testing.T) {
-	rcv, err := newRcvIpv4()
+	cf := Config{}
+	rcv, err := newRcvIpv4(cf)
 	if err != nil {
 		panic(err)
 	}
-	deCon := newDeconstructIpv4()
+	deCon := newDeconstructIpv4(cf)
 	ch := rcv.Receive()
 	for {
 		select {
