@@ -193,6 +193,9 @@ func (t *tracer) tracerKey(id uint16, src string, srcPort uint16, dst string, ds
 func (t *tracer) handleRcv(rcv *ICMPRcv) {
 	key := t.tracerKey(rcv.Id, rcv.Src, rcv.SrcPort, rcv.Dst, rcv.DstPort)
 	chI, ok := t.traceResChMap.Load(key)
+	if strings.Contains(key, "172.22.8.21-172.19.8.16") {
+		fmt.Println("debug>>", ok)
+	}
 	if !ok {
 		return
 	}
