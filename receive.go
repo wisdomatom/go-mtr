@@ -77,7 +77,7 @@ func (r *rcvIpv4) Receive() chan []byte {
 			bts := make([]byte, 512)
 			_, _, err := unix.Recvfrom(r.fd, bts, 0)
 			if err != nil {
-				Error(r.ErrCh, fmt.Errorf("error: Recvfrom (%v)\n", err))
+				//Error(r.ErrCh, fmt.Errorf("error: Recvfrom (%v)\n", err))
 				continue
 			}
 			if len(bts) > 20 && bts[20] == 8 {

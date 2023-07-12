@@ -350,6 +350,11 @@ func (t *tracer) trace(startTTL uint8, tc *TraceResult, resCh chan *TraceResult)
 			for {
 				select {
 				case <-to.C:
+					if len(ch) > 0 {
+						//to = time.NewTimer(t.nextHopWait)
+						Error(t.errCh, fmt.Errorf("timeout but ch len(%v)", len(ch)))
+						//continue
+					}
 					loss++
 					tc.Res = append(tc.Res, TraceRes{
 						Latency:    0,
