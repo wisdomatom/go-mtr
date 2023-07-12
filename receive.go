@@ -79,6 +79,13 @@ func (r *rcvIpv4) Receive() chan []byte {
 			if err != nil {
 				continue
 			}
+			if len(bts) < 20 {
+				continue
+			}
+			if len(bts) > 20 && bts[20] == 8 {
+				// icmp echo should be ignored
+				continue
+			}
 			ticker.Reset(time.Millisecond * 300)
 			select {
 			case ch <- bts:
