@@ -194,7 +194,7 @@ func (t *tracer) handleRcv(rcv *ICMPRcv) {
 	key := t.tracerKey(rcv.Id, rcv.Src, rcv.SrcPort, rcv.Dst, rcv.DstPort)
 	chI, ok := t.traceResChMap.Load(key)
 	if strings.Contains(key, "172.22.8.21-172.19.8.16") {
-		fmt.Println("debug>>", ok)
+		fmt.Println("debug>>", key, ok)
 	}
 	if !ok {
 		return
@@ -217,6 +217,7 @@ func (t *tracer) Listen() {
 					}
 					rcv, err := t.ipv4.deConstructor.DeConstruct(msg)
 					if err != nil {
+						fmt.Println("ipv4 deconstruct error:", err)
 						continue
 					}
 					t.handleRcv(rcv)
