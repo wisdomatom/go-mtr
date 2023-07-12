@@ -64,7 +64,6 @@ func newRcvIpv4(conf Config) (Receiver, error) {
 
 func (r *rcvIpv4) Receive() chan []byte {
 	ch := make(chan []byte, 10000)
-	ticker := time.NewTicker(time.Second)
 	go func() {
 		for {
 			select {
@@ -85,10 +84,9 @@ func (r *rcvIpv4) Receive() chan []byte {
 				// icmp echo should be ignored
 				continue
 			}
-			ticker.Reset(time.Millisecond * 300)
 			select {
 			case ch <- bts:
-			case <-ticker.C:
+			default:
 				Error(r.ErrCh, fmt.Errorf("error: receive ch full (%v)\n", time.Now()))
 			}
 		}
