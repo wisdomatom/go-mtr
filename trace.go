@@ -218,9 +218,9 @@ func (t *tracer) Listen() {
 						// chan has been closed by receiver goroutine should exit
 						return
 					}
-					if !t.ipv4Filter(msg) {
-						continue
-					}
+					//if !t.ipv4Filter(msg) {
+					//	continue
+					//}
 					rcv, err := t.ipv4.deConstructor.DeConstruct(msg)
 					if err != nil {
 						Error(t.errCh, fmt.Errorf("error: ipv4 deconstruct (%v)\n", err))
