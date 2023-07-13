@@ -254,12 +254,11 @@ func (t *tracer) Listen() error {
 }
 
 func (t *tracer) Close() {
+	t.lock.Unlock()
 	t.ipv4.detector.Close()
 	t.ipv4.receiver.Close()
 	t.ipv6.detector.Close()
 	t.ipv6.receiver.Close()
-
-	t.lock.Unlock()
 }
 
 func (t *tracer) BatchTrace(batch []Trace, startTTL uint8) []TraceResult {
