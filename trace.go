@@ -9,7 +9,7 @@ import (
 )
 
 type Tracer interface {
-	Listen()
+	Listen() error
 	Close()
 	BatchTrace(batch []Trace, startTTL uint8) []TraceResult
 }
@@ -25,6 +25,7 @@ type tracer struct {
 	conf             Config
 	receiveGoroutine int
 	errCh            chan error
+	lock             *sync.Mutex
 }
 
 type tracerIpv4 struct {
@@ -139,6 +140,7 @@ func NewTrace(conf Config) (Tracer, error) {
 		conf:             conf,
 		receiveGoroutine: conf.RcvGoroutineNum,
 		errCh:            conf.ErrCh,
+		lock:             &sync.Mutex{},
 	}
 	if tc.receiveGoroutine == 0 {
 		tc.receiveGoroutine = 5
@@ -206,9 +208,16 @@ func (t *tracer) handleRcv(rcv *ICMPRcv) {
 	ch <- rcv
 }
 
-func (t *tracer) Listen() {
-	chIpv4 := t.ipv4.receiver.Receive()
-	chIpv6 := t.ipv6.receiver.Receive()
+func (t *tracer) Listen() error {
+	t.lock.Lock()
+	chIpv4, err := t.ipv4.receiver.Receive()
+	if err != nil {
+		return err
+	}
+	chIpv6, err := t.ipv6.receiver.Receive()
+	if err != nil {
+		return err
+	}
 	for i := 0; i < t.receiveGoroutine; i++ {
 		go func() {
 			for {
@@ -218,9 +227,9 @@ func (t *tracer) Listen() {
 						// chan has been closed by receiver goroutine should exit
 						return
 					}
-					//if !t.ipv4Filter(msg) {
-					//	continue
-					//}
+					if !t.ipv4Filter(msg) {
+						continue
+					}
 					rcv, err := t.ipv4.deConstructor.DeConstruct(msg)
 					if err != nil {
 						Error(t.errCh, fmt.Errorf("error: ipv4 deconstruct (%v)\n", err))
@@ -241,6 +250,7 @@ func (t *tracer) Listen() {
 			}
 		}()
 	}
+	return nil
 }
 
 func (t *tracer) Close() {
@@ -248,6 +258,8 @@ func (t *tracer) Close() {
 	t.ipv4.receiver.Close()
 	t.ipv6.detector.Close()
 	t.ipv6.receiver.Close()
+
+	t.lock.Unlock()
 }
 
 func (t *tracer) BatchTrace(batch []Trace, startTTL uint8) []TraceResult {

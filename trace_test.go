@@ -16,7 +16,7 @@ func mockTrace() []Trace {
 			SrcPort: 65523,
 			DstPort: 65535,
 			MaxTTL:  60,
-			Retry:   0,
+			Retry:   2,
 		},
 	}
 	for idx := range dataT {
@@ -31,7 +31,7 @@ func mockTrace() []Trace {
 
 func TestTrace(t *testing.T) {
 	tr, err := NewTrace(Config{
-		// UDP: true,
+		//UDP: true,
 		ICMP:        true,
 		MaxUnReply:  8,
 		NextHopWait: time.Millisecond * 100,
@@ -50,7 +50,10 @@ func TestTrace(t *testing.T) {
 	if err != nil {
 		panic(err)
 	}
-	go tr.Listen()
+	err = tr.Listen()
+	if err != nil {
+		panic(err)
+	}
 	defer tr.Close()
 	res := tr.BatchTrace([]Trace{
 		*tc,
@@ -64,15 +67,18 @@ func TestTrace(t *testing.T) {
 
 func TestTraceBatch(t *testing.T) {
 	tr, err := NewTrace(Config{
-		UDP: true,
-		//ICMP:        true,
+		//UDP: true,
+		ICMP:        true,
 		MaxUnReply:  8,
 		NextHopWait: time.Millisecond * 100,
 	})
 	if err != nil {
 		panic(err)
 	}
-	go tr.Listen()
+	err = tr.Listen()
+	if err != nil {
+		panic(err)
+	}
 	defer tr.Close()
 	wg := sync.WaitGroup{}
 	batch := mockTrace()

@@ -16,7 +16,11 @@ func TestReceive(t *testing.T) {
 		panic(err)
 	}
 	deCon := newDeconstructIpv4(cf)
-	ch := rcv.Receive()
+	ch, err := rcv.Receive()
+	if err != nil {
+		t.Error(err)
+		return
+	}
 	for {
 		select {
 		case bts := <-ch:
