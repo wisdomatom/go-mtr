@@ -187,36 +187,3 @@ func TestHuge(t *testing.T) {
 	fmt.Println("pkg loss:", debug.PacketSend-debug.PacketRcv)
 }
 
-func rcv(nodes []node, sig chan int) {
-	sourceIp := GetOutbondIP()
-	mp := map[string]struct{}{}
-	for _, n := range nodes {
-		mp[fmt.Sprintf("%v-%v", sourceIp, n.Ip)] = struct{}{}
-	}
-
-	cf := Config{}
-	rcv, err := newRcvIpv4(cf)
-	if err != nil {
-		panic(err)
-	}
-	ch, err := rcv.Receive()
-	if err != nil {
-		panic(err)
-	}
-	fmt.Println("total:", len(mp))
-	count := 0
-	for {
-		select {
-		case <-sig:
-			fmt.Println("count:", count)
-			sig <- 2
-		case bts := <-ch:
-			key := filter(bts)
-			_, ok := mp[key]
-			if ok {
-				count++
-				// fmt.Println("count:", count)
-			}
-		}
-	}
-}
