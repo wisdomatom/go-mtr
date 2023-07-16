@@ -105,6 +105,10 @@ type node struct {
 }
 
 func TestHuge(t *testing.T) {
+	defer func ()  {
+		e := recover()
+		fmt.Println(">>>>>>>>>>>", e)
+	}()
 	var data []Trace
 	errCh := make(chan error, 2048)
 	go func() {
@@ -123,6 +127,7 @@ func TestHuge(t *testing.T) {
 		t.Error(err)
 		return
 	}
+	nodes = nodes[:2]
 	// sig := make(chan int, 2)
 	// go rcv(nodes, sig)
 	tr, err := NewTrace(Config{

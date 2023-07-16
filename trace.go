@@ -166,9 +166,12 @@ func tracerI4(conf Config) (*tracerIpv4, error) {
 	con := newConstructIpv4(conf)
 	deCon := newDeconstructIpv4(conf)
 	detector := newProbeIpv4(conf)
-	rcv, err := newRcvIpv4(conf)
+	rcv, err := newRcvIpv4Bpf(conf)
 	if err != nil {
-		return nil, err
+		rcv, err = newRcvIpv4(conf)
+		if err != nil {
+			return nil, err
+		}
 	}
 	return &tracerIpv4{
 		constructor:   con,
@@ -238,7 +241,7 @@ func (t *tracer) Listen() error {
 			for {
 				select {
 				case msg := <-chIpv4:
-					if len(msg) == 0 {
+					if msg == nil {
 						// chan has been closed by receiver goroutine should exit
 						return
 					}
@@ -246,22 +249,22 @@ func (t *tracer) Listen() error {
 						continue
 					}
 					t.atomRcvAdd()
-					rcv, err := t.ipv4.deConstructor.DeConstruct(msg)
-					if err != nil {
-						Error(t.errCh, fmt.Errorf("error: ipv4 deconstruct (%v)\n", err))
-						continue
-					}
-					t.handleRcv(rcv)
+					// rcv, err := t.ipv4.deConstructor.DeConstruct(msg)
+					// if err != nil {
+					// 	Error(t.errCh, fmt.Errorf("error: ipv4 deconstruct (%v)\n", err))
+					// 	continue
+					// }
+					t.handleRcv(msg)
 				case msg := <-chIpv6:
-					if len(msg) == 0 {
+					if msg == nil {
 						// chan has been closed by receiver goroutine should exit
 						return
 					}
-					rcv, err := t.ipv6.deConstructor.DeConstruct(msg)
-					if err != nil {
-						continue
-					}
-					t.handleRcv(rcv)
+					// rcv, err := t.ipv6.deConstructor.DeConstruct(msg)
+					// if err != nil {
+					// 	continue
+					// }
+					t.handleRcv(msg)
 				}
 			}
 		}()

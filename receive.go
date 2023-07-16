@@ -9,13 +9,13 @@ import (
 )
 
 type Receiver interface {
-	Receive() (chan []byte, error)
+	Receive() (chan *ICMPRcv, error)
 	Close()
 }
 
 type rcvMock struct{}
 
-func (r *rcvMock) Receive() (chan []byte, error) {
+func (r *rcvMock) Receive() (chan *ICMPRcv, error) {
 	return nil, nil
 }
 
@@ -35,6 +35,7 @@ type rcvIpv4 struct {
 	fd     int
 	ctx    context.Context
 	cancel func()
+	deConstructIpv4 DeConstructor
 }
 
 func newRcvIpv4(conf Config) (Receiver, error) {
@@ -43,6 +44,7 @@ func newRcvIpv4(conf Config) (Receiver, error) {
 		//ctx:    ctx,
 		//cancel: cancel,
 		Config: conf,
+		deConstructIpv4: newDeconstructIpv4(conf),
 	}
 	return rc, nil
 }
@@ -73,13 +75,13 @@ func (r *rcvIpv4) initSocket() error {
 	return nil
 }
 
-func (r *rcvIpv4) Receive() (chan []byte, error) {
+func (r *rcvIpv4) Receive() (chan *ICMPRcv, error) {
 	var err error
 	err = r.initSocket()
 	if err != nil {
 		return nil, err
 	}
-	ch := make(chan []byte, 100000)
+	ch := make(chan *ICMPRcv, 100000)
 	go func() {
 		for {
 			select {
@@ -103,8 +105,13 @@ func (r *rcvIpv4) Receive() (chan []byte, error) {
 				// icmp echo should be ignored
 				continue
 			}
+			rcv, err := r.deConstructIpv4.DeConstruct(bts)
+			if err != nil {
+				Error(r.ErrCh, err)
+				continue
+			}
 			select {
-			case ch <- bts:
+			case ch <- rcv:
 			default:
 				Error(r.ErrCh, fmt.Errorf("error: receive ch full (%v)\n", time.Now()))
 			}
