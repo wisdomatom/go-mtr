@@ -3,8 +3,9 @@ package go_mtr
 import (
 	"context"
 	"fmt"
-	"golang.org/x/sys/unix"
 	"time"
+
+	"golang.org/x/sys/unix"
 )
 
 type Receiver interface {
@@ -57,7 +58,11 @@ func (r *rcvIpv4) initSocket() error {
 	if err != nil {
 		return err
 	}
-	err = setSockOptRcvTimeout(fd, time.Second)
+	err = setSockOptRcvTimeout(fd, time.Second *2)
+	if err != nil {
+		return err
+	}
+	err = setSockOptRcvBuff(fd, 1024*1024*32)
 	if err != nil {
 		return err
 	}
@@ -74,7 +79,7 @@ func (r *rcvIpv4) Receive() (chan []byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	ch := make(chan []byte, 10000)
+	ch := make(chan []byte, 100000)
 	go func() {
 		for {
 			select {
@@ -91,6 +96,7 @@ func (r *rcvIpv4) Receive() (chan []byte, error) {
 			bts := make([]byte, 512)
 			_, _, err = unix.Recvfrom(r.fd, bts, 0)
 			if err != nil {
+				// Error(r.ErrCh, err)
 				continue
 			}
 			if len(bts) > 20 && bts[20] == 8 {

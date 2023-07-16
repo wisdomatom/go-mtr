@@ -9,23 +9,26 @@ import (
 )
 
 type Tracer interface {
-	Listen() error
-	Close()
-	BatchTrace(batch []Trace, startTTL uint8) []TraceResult
+	BatchTrace(batch []Trace, startTTL uint8) ([]*TraceResult, error)
+	DebugInfo() TraceDebugInfo
 }
 
 type tracer struct {
-	maxUnReply       int
-	nextHopWait      time.Duration
-	ipv4             *tracerIpv4
-	ipv6             *tracerIpv6
-	traceResChMap    *sync.Map
-	filterMap        *sync.Map
+	maxUnReply  int
+	nextHopWait time.Duration
+	ipv4        *tracerIpv4
+	ipv6        *tracerIpv6
+	// traceResChMap    *sync.Map
+	traceResChMap    map[string]chan *ICMPRcv
+	filterMap        map[string]struct{}
 	atomId           uint32
 	conf             Config
 	receiveGoroutine int
 	errCh            chan error
 	lock             *sync.Mutex
+	atomSend         uint32
+	atomRcv          uint32
+	batchSize        int
 }
 
 type tracerIpv4 struct {
@@ -50,6 +53,12 @@ type TraceResult struct {
 	Done       bool
 	AvgPktLoss float32
 	Res        []TraceRes
+	resCh      chan *ICMPRcv
+}
+
+type TraceDebugInfo struct {
+	PacketSend uint32 `json:"packet_send"`
+	PacketRcv  uint32 `json:"packet_rcv"`
 }
 
 func (t TraceResult) Marshal() string {
@@ -131,19 +140,24 @@ func NewTrace(conf Config) (Tracer, error) {
 		return nil, err
 	}
 	tc := &tracer{
-		nextHopWait:      conf.NextHopWait,
-		maxUnReply:       conf.MaxUnReply,
-		ipv4:             ipv4,
-		ipv6:             ipv6,
-		traceResChMap:    &sync.Map{},
-		filterMap:        &sync.Map{},
+		nextHopWait: conf.NextHopWait,
+		maxUnReply:  conf.MaxUnReply,
+		ipv4:        ipv4,
+		ipv6:        ipv6,
+		// traceResChMap:    &sync.Map{},
+		traceResChMap:    map[string]chan *ICMPRcv{},
+		filterMap:        map[string]struct{}{},
 		conf:             conf,
 		receiveGoroutine: conf.RcvGoroutineNum,
 		errCh:            conf.ErrCh,
 		lock:             &sync.Mutex{},
+		batchSize:        conf.BatchSize,
 	}
 	if tc.receiveGoroutine == 0 {
 		tc.receiveGoroutine = 5
+	}
+	if tc.batchSize == 0 {
+		tc.batchSize = 5000
 	}
 	return tc, nil
 }
@@ -199,12 +213,13 @@ func (t *tracer) tracerKey(id uint16, src string, srcPort uint16, dst string, ds
 
 func (t *tracer) handleRcv(rcv *ICMPRcv) {
 	key := t.tracerKey(rcv.Id, rcv.Src, rcv.SrcPort, rcv.Dst, rcv.DstPort)
-	chI, ok := t.traceResChMap.Load(key)
+	// chI, ok := t.traceResChMap.Load(key)
+	ch, ok := t.traceResChMap[key]
 	if !ok {
 		Error(t.errCh, fmt.Errorf("error: drop(%v)(%v)", key, time.Now()))
 		return
 	}
-	ch := chI.(chan *ICMPRcv)
+	// ch := chI.(chan *ICMPRcv)
 	ch <- rcv
 }
 
@@ -230,6 +245,7 @@ func (t *tracer) Listen() error {
 					if !t.ipv4Filter(msg) {
 						continue
 					}
+					t.atomRcvAdd()
 					rcv, err := t.ipv4.deConstructor.DeConstruct(msg)
 					if err != nil {
 						Error(t.errCh, fmt.Errorf("error: ipv4 deconstruct (%v)\n", err))
@@ -261,51 +277,105 @@ func (t *tracer) Close() {
 	t.ipv6.receiver.Close()
 }
 
-func (t *tracer) BatchTrace(batch []Trace, startTTL uint8) []TraceResult {
-	if len(batch) == 0 {
-		return nil
+func (t *tracer) BatchTrace(data []Trace, startTTL uint8) ([]*TraceResult, error) {
+	if len(data) == 0 {
+		return nil, nil
 	}
-	var result []TraceResult
-	ch := make(chan *TraceResult, len(batch))
-	for idx, b := range batch {
-		atomId := t.getAtomId()
-		key := t.tracerKey(atomId, b.SrcAddr, b.SrcPort, b.DstAddr, b.DstPort)
-		tr := TraceResult{
-			Id:      atomId,
-			Key:     key,
-			Trace:   batch[idx],
-			StartAt: time.Time{},
-			Done:    false,
-			Res:     []TraceRes{},
-		}
-		go t.trace(startTTL, &tr, ch)
+
+	traceResults := t.setFilterMap(data)
+	err := t.Listen()
+	if err != nil {
+		return nil, err
 	}
-	for r := range ch {
-		if r == nil {
-			break
+	defer func() {
+		t.clearFilterMap()
+		t.Close()
+	}()
+	var batch []int
+
+	// var result []TraceResult
+	// ch := make(chan *TraceResult, len(batch))
+	ch := make(chan int, len(batch))
+	for idx, _ := range traceResults {
+		batch = append(batch, idx)
+		if len(batch) < t.batchSize && idx != len(data)-1 {
+			continue
 		}
-		result = append(result, *r)
-		if len(result) == len(batch) {
-			close(ch)
-			break
+		for _, i := range batch {
+			// atomId := t.getAtomId()
+			// key := t.tracerKey(atomId, b.SrcAddr, b.SrcPort, b.DstAddr, b.DstPort)
+			// tr := TraceResult{
+			// 	Id:      atomId,
+			// 	Key:     key,
+			// 	Trace:   batch[idxB],
+			// 	StartAt: time.Time{},
+			// 	Done:    false,
+			// 	Res:     []TraceRes{},
+			// }
+			go t.trace(startTTL, traceResults[i], ch)
 		}
+		count := 0
+		fmt.Println("round")
+	For:
+		for {
+			select {
+			case r := <-ch:
+				if r == 0 {
+					break For
+				}
+				// result = append(result, *r)
+				count++
+				if count == len(batch) {
+					// close(ch)
+					break For
+				}
+			}
+		}
+		batch = []int{}
 	}
-	return result
+	close(ch)
+	return traceResults, nil
 }
 
 func (t *tracer) filterKey(srcIp, dstIp string) string {
 	return fmt.Sprintf("%v-%v", srcIp, dstIp)
 }
 
-func (t *tracer) trace(startTTL uint8, tc *TraceResult, resCh chan *TraceResult) {
+func (t *tracer) setFilterMap(data []Trace) []*TraceResult {
+	var results []*TraceResult
+	for idx, d := range data {
+		atomId := t.getAtomId()
+		resCh := make(chan *ICMPRcv, 100)
+		t.filterMap[t.filterKey(d.SrcAddr, d.DstAddr)] = struct{}{}
+		t.traceResChMap[t.tracerKey(atomId, d.SrcAddr, d.SrcPort, d.DstAddr, d.DstPort)] = resCh
+
+		key := t.tracerKey(atomId, d.SrcAddr, d.SrcPort, d.DstAddr, d.DstPort)
+		tr := TraceResult{
+			Id:      atomId,
+			Key:     key,
+			Trace:   data[idx],
+			StartAt: time.Time{},
+			Done:    false,
+			Res:     []TraceRes{},
+			resCh:   resCh,
+		}
+		results = append(results, &tr)
+	}
+
+	return results
+}
+
+func (t *tracer) clearFilterMap() {
+	t.filterMap = map[string]struct{}{}
+	t.traceResChMap = map[string]chan *ICMPRcv{}
+}
+
+func (t *tracer) trace(startTTL uint8, tc *TraceResult, done chan int) {
 	var err error
 	var reached bool
-	ch := make(chan *ICMPRcv, 100)
-	t.traceResChMap.Store(tc.Key, ch)
-	defer t.traceResChMap.Delete(tc.Key)
-	filterKey := t.filterKey(tc.SrcAddr, tc.DstAddr)
-	t.filterMap.Store(filterKey, struct{}{})
-	defer t.filterMap.Delete(filterKey)
+	ch := tc.resCh
+	// t.traceResChMap.Store(tc.Key, ch)
+	// defer t.traceResChMap.Delete(tc.Key)
 	unReply := 0
 	total := 0
 	loss := 0
@@ -335,6 +405,7 @@ func (t *tracer) trace(startTTL uint8, tc *TraceResult, resCh chan *TraceResult)
 				if err != nil {
 					continue
 				}
+				t.atomSendAdd()
 			} else {
 				pkg, err = t.ipv6.constructor.Packet(ConstructPacket{
 					Trace:   tc.Trace,
@@ -405,7 +476,8 @@ func (t *tracer) trace(startTTL uint8, tc *TraceResult, resCh chan *TraceResult)
 			unReply++
 			if unReply >= t.maxUnReply {
 				tc.AvgPktLoss = float32(loss) / float32(total)
-				resCh <- tc
+				// resCh <- tc
+				done <- 1
 				return
 			}
 		} else {
@@ -418,5 +490,30 @@ func (t *tracer) trace(startTTL uint8, tc *TraceResult, resCh chan *TraceResult)
 	if total > 0 {
 		tc.AvgPktLoss = float32(loss) / float32(total)
 	}
-	resCh <- tc
+	// resCh <- tc
+	done <- 1
+}
+
+func (t *tracer) atomSendAdd() {
+	atomic.AddUint32(&t.atomSend, 1)
+}
+
+func (t *tracer) atomRcvAdd() {
+	atomic.AddUint32(&t.atomRcv, 1)
+}
+
+func (t *tracer) pkgRcvCount() uint32 {
+	return t.atomRcv
+}
+
+func (t *tracer) pkgSendCount() uint32 {
+	return t.atomSend
+}
+
+func (t *tracer) DebugInfo() TraceDebugInfo {
+	db := TraceDebugInfo{
+		PacketSend: t.pkgSendCount(),
+		PacketRcv:  t.pkgRcvCount(),
+	}
+	return db
 }

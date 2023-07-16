@@ -24,6 +24,6 @@ func (t *tracer) ipv4Filter(pkg []byte) bool {
 	default:
 		return false
 	}
-	_, ok = t.filterMap.Load(t.filterKey(src, dst))
+	_, ok = t.filterMap[t.filterKey(src, dst)]
 	return ok
 }

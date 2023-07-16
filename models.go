@@ -14,6 +14,7 @@ type Config struct {
 	NextHopWait     time.Duration
 	RcvGoroutineNum int
 	ErrCh           chan error
+	BatchSize       int
 }
 
 type Trace struct {
