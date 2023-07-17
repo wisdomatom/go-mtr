@@ -14,11 +14,10 @@ type Tracer interface {
 }
 
 type tracer struct {
-	maxUnReply  int
-	nextHopWait time.Duration
-	ipv4        *tracerIpv4
-	ipv6        *tracerIpv6
-	// traceResChMap    *sync.Map
+	maxUnReply       int
+	nextHopWait      time.Duration
+	ipv4             *tracerIpv4
+	ipv6             *tracerIpv6
 	traceResChMap    map[string]chan *ICMPRcv
 	filterMap        map[string]struct{}
 	atomId           uint32
@@ -140,11 +139,10 @@ func NewTrace(conf Config) (Tracer, error) {
 		return nil, err
 	}
 	tc := &tracer{
-		nextHopWait: conf.NextHopWait,
-		maxUnReply:  conf.MaxUnReply,
-		ipv4:        ipv4,
-		ipv6:        ipv6,
-		// traceResChMap:    &sync.Map{},
+		nextHopWait:      conf.NextHopWait,
+		maxUnReply:       conf.MaxUnReply,
+		ipv4:             ipv4,
+		ipv6:             ipv6,
 		traceResChMap:    map[string]chan *ICMPRcv{},
 		filterMap:        map[string]struct{}{},
 		conf:             conf,
@@ -166,13 +164,17 @@ func tracerI4(conf Config) (*tracerIpv4, error) {
 	con := newConstructIpv4(conf)
 	deCon := newDeconstructIpv4(conf)
 	detector := newProbeIpv4(conf)
-	rcv, err := newRcvIpv4Bpf(conf)
+	rcv, err := newRcvIpv4(conf)
 	if err != nil {
-		rcv, err = newRcvIpv4(conf)
-		if err != nil {
-			return nil, err
-		}
+		return nil, err
 	}
+	// rcv, err := newRcvIpv4(conf)
+	// if err != nil {
+	// 	rcv, err = newRcvIpv4(conf)
+	// 	if err != nil {
+	// 		return nil, err
+	// 	}
+	// }
 	return &tracerIpv4{
 		constructor:   con,
 		deConstructor: deCon,
@@ -216,13 +218,11 @@ func (t *tracer) tracerKey(id uint16, src string, srcPort uint16, dst string, ds
 
 func (t *tracer) handleRcv(rcv *ICMPRcv) {
 	key := t.tracerKey(rcv.Id, rcv.Src, rcv.SrcPort, rcv.Dst, rcv.DstPort)
-	// chI, ok := t.traceResChMap.Load(key)
 	ch, ok := t.traceResChMap[key]
 	if !ok {
 		Error(t.errCh, fmt.Errorf("error: drop(%v)(%v)", key, time.Now()))
 		return
 	}
-	// ch := chI.(chan *ICMPRcv)
 	ch <- rcv
 }
 
@@ -249,21 +249,13 @@ func (t *tracer) Listen() error {
 						continue
 					}
 					t.atomRcvAdd()
-					// rcv, err := t.ipv4.deConstructor.DeConstruct(msg)
-					// if err != nil {
-					// 	Error(t.errCh, fmt.Errorf("error: ipv4 deconstruct (%v)\n", err))
-					// 	continue
-					// }
 					t.handleRcv(msg)
 				case msg := <-chIpv6:
 					if msg == nil {
 						// chan has been closed by receiver goroutine should exit
 						return
 					}
-					// rcv, err := t.ipv6.deConstructor.DeConstruct(msg)
-					// if err != nil {
-					// 	continue
-					// }
+					t.atomRcvAdd()
 					t.handleRcv(msg)
 				}
 			}
@@ -284,7 +276,14 @@ func (t *tracer) BatchTrace(data []Trace, startTTL uint8) ([]*TraceResult, error
 	if len(data) == 0 {
 		return nil, nil
 	}
-
+	probeChV4 := make(chan *SendProbe, 1024*1024)
+	probeChV6 := make(chan *SendProbe, 1024*1024)
+	go t.ipv4.detector.SteamProbe(probeChV4)
+	go t.ipv6.detector.SteamProbe(probeChV6)
+	defer func() {
+		close(probeChV4)
+		close(probeChV6)
+	}()
 	traceResults := t.setFilterMap(data)
 	err := t.Listen()
 	if err != nil {
@@ -295,30 +294,19 @@ func (t *tracer) BatchTrace(data []Trace, startTTL uint8) ([]*TraceResult, error
 		t.Close()
 	}()
 	var batch []int
-
-	// var result []TraceResult
-	// ch := make(chan *TraceResult, len(batch))
 	ch := make(chan int, len(batch))
 	for idx, _ := range traceResults {
 		batch = append(batch, idx)
 		if len(batch) < t.batchSize && idx != len(data)-1 {
 			continue
 		}
+		if len(batch) == 0 {
+			continue
+		}
 		for _, i := range batch {
-			// atomId := t.getAtomId()
-			// key := t.tracerKey(atomId, b.SrcAddr, b.SrcPort, b.DstAddr, b.DstPort)
-			// tr := TraceResult{
-			// 	Id:      atomId,
-			// 	Key:     key,
-			// 	Trace:   batch[idxB],
-			// 	StartAt: time.Time{},
-			// 	Done:    false,
-			// 	Res:     []TraceRes{},
-			// }
-			go t.trace(startTTL, traceResults[i], ch)
+			go t.trace(startTTL, traceResults[i], ch, probeChV4, probeChV6)
 		}
 		count := 0
-		fmt.Println("round")
 	For:
 		for {
 			select {
@@ -373,12 +361,10 @@ func (t *tracer) clearFilterMap() {
 	t.traceResChMap = map[string]chan *ICMPRcv{}
 }
 
-func (t *tracer) trace(startTTL uint8, tc *TraceResult, done chan int) {
+func (t *tracer) trace(startTTL uint8, tc *TraceResult, done chan int, probeChV4, probeChV6 chan *SendProbe) {
 	var err error
 	var reached bool
 	ch := tc.resCh
-	// t.traceResChMap.Store(tc.Key, ch)
-	// defer t.traceResChMap.Delete(tc.Key)
 	unReply := 0
 	total := 0
 	loss := 0
@@ -400,14 +386,12 @@ func (t *tracer) trace(startTTL uint8, tc *TraceResult, done chan int) {
 				if err != nil {
 					continue
 				}
-				err = t.ipv4.detector.Probe(SendProbe{
+				p := SendProbe{
 					Trace:        tc.Trace,
 					WriteTimeout: time.Duration(1) * time.Second,
 					Msg:          pkg,
-				})
-				if err != nil {
-					continue
 				}
+				probeChV4 <- &p
 				t.atomSendAdd()
 			} else {
 				pkg, err = t.ipv6.constructor.Packet(ConstructPacket{
@@ -421,14 +405,13 @@ func (t *tracer) trace(startTTL uint8, tc *TraceResult, done chan int) {
 				if err != nil {
 					continue
 				}
-				err := t.ipv6.detector.Probe(SendProbe{
+				p := SendProbe{
 					Trace:        tc.Trace,
 					WriteTimeout: time.Duration(1) * time.Second,
 					Msg:          pkg,
-				})
-				if err != nil {
-					continue
 				}
+				probeChV6 <- &p
+				t.atomSendAdd()
 			}
 			to := time.NewTimer(t.nextHopWait)
 		For:

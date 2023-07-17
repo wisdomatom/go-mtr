@@ -17,7 +17,7 @@ func TestReceive(t *testing.T) {
 	if err != nil {
 		panic(err)
 	}
-	deCon := newDeconstructIpv4(cf)
+	// deCon := newDeconstructIpv4(cf)
 	ch, err := rcv.Receive()
 	if err != nil {
 		t.Error(err)
@@ -25,17 +25,17 @@ func TestReceive(t *testing.T) {
 	}
 	for {
 		select {
-		case bts := <-ch:
-			icmp, err := deCon.DeConstruct(bts)
-			if err != nil {
-				continue
-			}
+		case icmp := <-ch:
+			// icmp, err := deCon.DeConstruct(bts)
+			// if err != nil {
+			// 	continue
+			// }
 			fmtICMPRcv(icmp)
 		}
 	}
 }
 
-func TestRcv(t *testing.T)  {
+func TestRcv(t *testing.T) {
 	bts, err := ioutil.ReadFile("./mock/nodes.json")
 	if err != nil {
 		t.Error(err)
@@ -55,6 +55,7 @@ func TestRcv(t *testing.T)  {
 
 	cf := Config{}
 	rcv, err := newRcvIpv4(cf)
+	// rcv, err := newRcvIpv4Bpf(cf)
 	if err != nil {
 		panic(err)
 	}
@@ -78,24 +79,24 @@ func TestRcv(t *testing.T)  {
 	}
 }
 
-func filter(pkg []byte) string {
-	if len(pkg) < 28 {
-		return ""
-	}
-	var src, dst string
-	controlMsgProto := pkg[20]
-	switch controlMsgProto {
-	case 11:
-		src = fmt.Sprintf("%v.%v.%v.%v", pkg[20+20], pkg[20+21], pkg[20+22], pkg[20+23])
-		dst = fmt.Sprintf("%v.%v.%v.%v", pkg[20+24], pkg[20+25], pkg[20+26], pkg[20+27])
-	case 3:
-		dst = fmt.Sprintf("%v.%v.%v.%v", pkg[12], pkg[13], pkg[14], pkg[15])
-		src = fmt.Sprintf("%v.%v.%v.%v", pkg[16], pkg[17], pkg[18], pkg[19])
-	case 0:
-		dst = fmt.Sprintf("%v.%v.%v.%v", pkg[12], pkg[13], pkg[14], pkg[15])
-		src = fmt.Sprintf("%v.%v.%v.%v", pkg[16], pkg[17], pkg[18], pkg[19])
-	default:
-		return ""
-	}
-	return fmt.Sprintf("%v-%v", src, dst)
+func filter(pkg *ICMPRcv) string {
+	// if len(pkg) < 28 {
+	// 	return ""
+	// }
+	// var src, dst string
+	// controlMsgProto := pkg[20]
+	// switch controlMsgProto {
+	// case 11:
+	// 	src = fmt.Sprintf("%v.%v.%v.%v", pkg[20+20], pkg[20+21], pkg[20+22], pkg[20+23])
+	// 	dst = fmt.Sprintf("%v.%v.%v.%v", pkg[20+24], pkg[20+25], pkg[20+26], pkg[20+27])
+	// case 3:
+	// 	dst = fmt.Sprintf("%v.%v.%v.%v", pkg[12], pkg[13], pkg[14], pkg[15])
+	// 	src = fmt.Sprintf("%v.%v.%v.%v", pkg[16], pkg[17], pkg[18], pkg[19])
+	// case 0:
+	// 	dst = fmt.Sprintf("%v.%v.%v.%v", pkg[12], pkg[13], pkg[14], pkg[15])
+	// 	src = fmt.Sprintf("%v.%v.%v.%v", pkg[16], pkg[17], pkg[18], pkg[19])
+	// default:
+	// 	return ""
+	// }
+	return fmt.Sprintf("%v-%v", pkg.Src, pkg.Dst)
 }

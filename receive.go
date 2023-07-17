@@ -1,3 +1,6 @@
+//go:build !bpf
+// +build !bpf
+
 package go_mtr
 
 import (
@@ -32,18 +35,15 @@ func newRcvIpv6() (Receiver, error) {
 type rcvIpv4 struct {
 	rcvMock
 	Config
-	fd     int
-	ctx    context.Context
-	cancel func()
+	fd              int
+	ctx             context.Context
+	cancel          func()
 	deConstructIpv4 DeConstructor
 }
 
 func newRcvIpv4(conf Config) (Receiver, error) {
 	rc := &rcvIpv4{
-		//fd:     fd,
-		//ctx:    ctx,
-		//cancel: cancel,
-		Config: conf,
+		Config:          conf,
 		deConstructIpv4: newDeconstructIpv4(conf),
 	}
 	return rc, nil
@@ -60,7 +60,7 @@ func (r *rcvIpv4) initSocket() error {
 	if err != nil {
 		return err
 	}
-	err = setSockOptRcvTimeout(fd, time.Second *2)
+	err = setSockOptRcvTimeout(fd, time.Second*2)
 	if err != nil {
 		return err
 	}

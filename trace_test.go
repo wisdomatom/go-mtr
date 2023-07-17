@@ -33,9 +33,9 @@ func mockTrace() []Trace {
 
 func TestTrace(t *testing.T) {
 	tr, err := NewTrace(Config{
-		//UDP: true,
+		// UDP: true,
 		ICMP:        true,
-		MaxUnReply:  8,
+		MaxUnReply:  16,
 		NextHopWait: time.Millisecond * 100,
 	})
 	if err != nil {
@@ -105,7 +105,7 @@ type node struct {
 }
 
 func TestHuge(t *testing.T) {
-	defer func ()  {
+	defer func() {
 		e := recover()
 		fmt.Println(">>>>>>>>>>>", e)
 	}()
@@ -127,14 +127,13 @@ func TestHuge(t *testing.T) {
 		t.Error(err)
 		return
 	}
-	nodes = nodes[:2]
 	// sig := make(chan int, 2)
 	// go rcv(nodes, sig)
 	tr, err := NewTrace(Config{
 		//UDP: true,
 		ICMP:        true,
-		MaxUnReply:  1,
-		NextHopWait: time.Millisecond * 500,
+		MaxUnReply:  2,
+		NextHopWait: time.Millisecond * 300,
 		ErrCh:       errCh,
 		BatchSize:   4000,
 	})
@@ -148,7 +147,7 @@ func TestHuge(t *testing.T) {
 			SrcPort: 65523,
 			DstPort: 65535,
 			MaxTTL:  30,
-			Retry:   2,
+			Retry:   1,
 		})
 		if err != nil {
 			panic(err)
@@ -186,4 +185,3 @@ func TestHuge(t *testing.T) {
 	fmt.Println("pkg rcv:", debug.PacketRcv)
 	fmt.Println("pkg loss:", debug.PacketSend-debug.PacketRcv)
 }
-
