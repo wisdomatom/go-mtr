@@ -18,8 +18,8 @@ type tracer struct {
 	nextHopWait      time.Duration
 	ipv4             *tracerIpv4
 	ipv6             *tracerIpv6
-	traceResChMap    map[string]chan *ICMPRcv
-	filterMap        map[string]struct{}
+	traceResChMap    *sync.Map
+	filterMap        *sync.Map
 	atomId           uint32
 	conf             Config
 	receiveGoroutine int
@@ -143,8 +143,8 @@ func NewTrace(conf Config) (Tracer, error) {
 		maxUnReply:       conf.MaxUnReply,
 		ipv4:             ipv4,
 		ipv6:             ipv6,
-		traceResChMap:    map[string]chan *ICMPRcv{},
-		filterMap:        map[string]struct{}{},
+		traceResChMap:    &sync.Map{},
+		filterMap:        &sync.Map{},
 		conf:             conf,
 		receiveGoroutine: conf.RcvGoroutineNum,
 		errCh:            conf.ErrCh,
@@ -218,11 +218,12 @@ func (t *tracer) tracerKey(id uint16, src string, srcPort uint16, dst string, ds
 
 func (t *tracer) handleRcv(rcv *ICMPRcv) {
 	key := t.tracerKey(rcv.Id, rcv.Src, rcv.SrcPort, rcv.Dst, rcv.DstPort)
-	ch, ok := t.traceResChMap[key]
+	chI, ok := t.traceResChMap.Load(key)
 	if !ok {
 		Error(t.errCh, fmt.Errorf("error: drop(%v)(%v)", key, time.Now()))
 		return
 	}
+	ch := chI.(chan *ICMPRcv)
 	ch <- rcv
 }
 
@@ -337,8 +338,8 @@ func (t *tracer) setFilterMap(data []Trace) []*TraceResult {
 	for idx, d := range data {
 		atomId := t.getAtomId()
 		resCh := make(chan *ICMPRcv, 100)
-		t.filterMap[t.filterKey(d.SrcAddr, d.DstAddr)] = struct{}{}
-		t.traceResChMap[t.tracerKey(atomId, d.SrcAddr, d.SrcPort, d.DstAddr, d.DstPort)] = resCh
+		t.filterMap.Store(t.filterKey(d.SrcAddr, d.DstAddr), struct{}{})
+		t.traceResChMap.Store(t.tracerKey(atomId, d.SrcAddr, d.SrcPort, d.DstAddr, d.DstPort), resCh)
 
 		key := t.tracerKey(atomId, d.SrcAddr, d.SrcPort, d.DstAddr, d.DstPort)
 		tr := TraceResult{
@@ -357,8 +358,8 @@ func (t *tracer) setFilterMap(data []Trace) []*TraceResult {
 }
 
 func (t *tracer) clearFilterMap() {
-	t.filterMap = map[string]struct{}{}
-	t.traceResChMap = map[string]chan *ICMPRcv{}
+	t.filterMap = &sync.Map{}
+	t.traceResChMap = &sync.Map{}
 }
 
 func (t *tracer) trace(startTTL uint8, tc *TraceResult, done chan int, probeChV4, probeChV6 chan *SendProbe) {
