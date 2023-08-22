@@ -62,7 +62,7 @@ type TraceDebugInfo struct {
 }
 
 func (t TraceResult) JsonString() string {
-	bts, _ := json.MarshalIndent(&t, "", "  ")
+	bts, _ := json.Marshal(&t)
 	return string(bts)
 }
 
@@ -132,7 +132,7 @@ func (t TraceResult) Aggregate() TraceResult {
 
 func (t TraceResult) JsonStringAggregate() string {
 	ta := t.Aggregate()
-	bts, _ := json.MarshalIndent(&ta, "", "  ")
+	bts, _ := json.Marshal(&ta)
 	return string(bts)
 }
 
