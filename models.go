@@ -18,21 +18,21 @@ type Config struct {
 }
 
 type Trace struct {
-	IsIpv4      bool
-	SrcAddr     string
-	DstAddr     string
-	SrcSockAddr unix.Sockaddr
-	DstSockAddr unix.Sockaddr
-	SrcPort     uint16
-	DstPort     uint16
-	MaxTTL      uint8
-	Retry       int
+	IsIpv4      bool          `json:"-"`
+	SrcAddr     string        `json:"src_addr"`
+	DstAddr     string        `json:"dst_addr"`
+	SrcSockAddr unix.Sockaddr `json:"-"`
+	DstSockAddr unix.Sockaddr `json:"-"`
+	SrcPort     uint16        `json:"src_port"`
+	DstPort     uint16        `json:"dst_port"`
+	MaxTTL      uint8         `json:"max_ttl"`
+	Retry       int           `json:"retry"`
 }
 
 type TraceRes struct {
-	SrcTTL     string
-	Latency    time.Duration
-	TTL        uint8
-	Reached    bool
-	PacketLoss float32
+	SrcTTL     string        `json:"src_ttl"`
+	Latency    time.Duration `json:"latency"`
+	TTL        uint8         `json:"ttl"`
+	Reached    bool          `json:"reached"`
+	PacketLoss float32       `json:"packet_loss"`
 }

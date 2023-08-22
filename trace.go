@@ -1,6 +1,7 @@
 package go_mtr
 
 import (
+	"encoding/json"
 	"fmt"
 	"strings"
 	"sync"
@@ -45,19 +46,24 @@ type tracerIpv6 struct {
 }
 
 type TraceResult struct {
-	Id  uint16
-	Key string
 	Trace
-	StartAt    time.Time
-	Done       bool
-	AvgPktLoss float32
-	Res        []TraceRes
-	resCh      chan *ICMPRcv
+	Id         uint16        `json:"id"`
+	Key        string        `json:"key"`
+	StartAt    time.Time     `json:"start_at"`
+	Done       bool          `json:"done"`
+	AvgPktLoss float32       `json:"avg_pkt_loss"`
+	Res        []TraceRes    `json:"res"`
+	resCh      chan *ICMPRcv `json:"-"`
 }
 
 type TraceDebugInfo struct {
 	PacketSend uint32 `json:"packet_send"`
 	PacketRcv  uint32 `json:"packet_rcv"`
+}
+
+func (t TraceResult) JsonString() string {
+	bts, _ := json.MarshalIndent(&t, "", "  ")
+	return string(bts)
 }
 
 func (t TraceResult) Marshal() string {
@@ -122,6 +128,12 @@ func (t TraceResult) Aggregate() TraceResult {
 	}
 	t.Res = agg
 	return t
+}
+
+func (t TraceResult) JsonStringAggregate() string {
+	ta := t.Aggregate()
+	bts, _ := json.MarshalIndent(&ta, "", "  ")
+	return string(bts)
 }
 
 func (t TraceResult) MarshalAggregate() string {
@@ -346,7 +358,7 @@ func (t *tracer) setFilterMap(data []Trace) []*TraceResult {
 			Id:      atomId,
 			Key:     key,
 			Trace:   data[idx],
-			StartAt: time.Time{},
+			StartAt: time.Now(),
 			Done:    false,
 			Res:     []TraceRes{},
 			resCh:   resCh,

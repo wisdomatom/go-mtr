@@ -61,9 +61,9 @@ func TestTrace(t *testing.T) {
 		*tc,
 	}, 1)
 	for _, r := range res {
-		fmt.Println(r.Marshal())
+		fmt.Println(r.JsonString())
 		fmt.Println("===================================================")
-		fmt.Println(r.MarshalAggregate())
+		fmt.Println(r.JsonStringAggregate())
 	}
 }
 
