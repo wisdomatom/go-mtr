@@ -299,13 +299,13 @@ func (t *tracer) BatchTrace(data []Trace, startTTL uint8) ([]*TraceResult, error
 	}()
 	traceResults := t.setFilterMap(data)
 	err := t.Listen()
-	if err != nil {
-		return nil, err
-	}
 	defer func() {
 		t.clearFilterMap()
 		t.Close()
 	}()
+	if err != nil {
+		return nil, err
+	}
 	var batch []int
 	ch := make(chan int, len(batch))
 	for idx, _ := range traceResults {
