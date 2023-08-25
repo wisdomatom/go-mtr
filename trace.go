@@ -240,7 +240,7 @@ func (t *tracer) handleRcv(rcv *ICMPRcv) {
 }
 
 func (t *tracer) Listen() error {
-	t.lock.Lock()
+	//t.lock.Lock()
 	chIpv4, err := t.ipv4.receiver.Receive()
 	if err != nil {
 		return err
@@ -278,7 +278,7 @@ func (t *tracer) Listen() error {
 }
 
 func (t *tracer) Close() {
-	t.lock.Unlock()
+	//t.lock.Unlock()
 	t.ipv4.detector.Close()
 	t.ipv4.receiver.Close()
 	t.ipv6.detector.Close()
@@ -298,14 +298,17 @@ func (t *tracer) BatchTrace(data []Trace, startTTL uint8) ([]*TraceResult, error
 		close(probeChV6)
 	}()
 	traceResults := t.setFilterMap(data)
+	t.lock.Lock()
 	err := t.Listen()
+	defer t.lock.Unlock()
+	if err != nil {
+		fmt.Println("listen error:", err)
+		return nil, err
+	}
 	defer func() {
 		t.clearFilterMap()
 		t.Close()
 	}()
-	if err != nil {
-		return nil, err
-	}
 	var batch []int
 	ch := make(chan int, len(batch))
 	for idx, _ := range traceResults {

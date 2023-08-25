@@ -16,6 +16,6 @@ func setSockOptRcvTimeout(fd int, timeout time.Duration) error {
 }
 
 func setSockOptRcvBuff(fd int, bytes int) error {
-	err := unix.SetsockoptInt(fd, unix.SOL_SOCKET, unix.SO_RCVBUF, bytes)
-	return err
+	//err := unix.SetsockoptInt(fd, unix.SOL_SOCKET, unix.SO_RCVBUF, 1024*1024*4)
+	return nil
 }
