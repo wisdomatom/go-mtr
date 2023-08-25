@@ -286,6 +286,8 @@ func (t *tracer) Close() {
 }
 
 func (t *tracer) BatchTrace(data []Trace, startTTL uint8) ([]*TraceResult, error) {
+	t.lock.Lock()
+	defer t.lock.Unlock()
 	if len(data) == 0 {
 		return nil, nil
 	}
@@ -298,9 +300,7 @@ func (t *tracer) BatchTrace(data []Trace, startTTL uint8) ([]*TraceResult, error
 		close(probeChV6)
 	}()
 	traceResults := t.setFilterMap(data)
-	t.lock.Lock()
 	err := t.Listen()
-	defer t.lock.Unlock()
 	if err != nil {
 		fmt.Println("listen error:", err)
 		return nil, err
